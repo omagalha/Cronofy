@@ -13,6 +13,7 @@ import { useAppContext } from '../../context/AppContext';
 
 const setupSteps = [
   { label: 'Definir concurso', route: '/setup/concurso' },
+  { label: 'Definir data da prova', route: '/setup/data-prova' },
   { label: 'Definir nível', route: '/setup/nivel' },
   { label: 'Definir foco', route: '/setup/foco' },
   { label: 'Definir disponibilidade', route: '/setup/disponibilidade' },
@@ -24,23 +25,17 @@ export default function SetupIndexScreen() {
   const { setupData, generateScheduleFromSubjects } = useAppContext();
 
   function handleFinishSetup() {
-    if (setupData.materias.length === 0) {
+    const result = generateScheduleFromSubjects();
+
+    if (!result.success) {
       Alert.alert(
-        'Adicione matérias',
-        'Você precisa adicionar pelo menos uma matéria antes de gerar o cronograma.'
+        'Setup incompleto',
+        result.errors?.join('\n') ||
+          'Revise seus dados antes de gerar o cronograma.'
       );
       return;
     }
 
-    if (setupData.diasDisponiveis.length === 0) {
-      Alert.alert(
-        'Selecione os dias disponíveis',
-        'Escolha pelo menos um dia da semana para gerar o cronograma.'
-      );
-      return;
-    }
-
-    generateScheduleFromSubjects();
     router.replace('/home');
   }
 
@@ -59,6 +54,13 @@ export default function SetupIndexScreen() {
             Concurso:{' '}
             <Text style={styles.value}>
               {setupData.concurso || 'Não definido'}
+            </Text>
+          </Text>
+
+          <Text style={styles.label}>
+            Data da prova:{' '}
+            <Text style={styles.value}>
+              {setupData.examDate || 'Não definida'}
             </Text>
           </Text>
 

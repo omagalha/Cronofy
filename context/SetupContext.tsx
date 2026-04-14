@@ -21,6 +21,7 @@ type SetupContextData = {
   clearSubjects: () => void;
   toggleAvailableDay: (day: string) => void;
   clearAvailableDays: () => void;
+  resetSetup: () => Promise<void>;
 };
 
 const STORAGE_KEYS = {
@@ -37,30 +38,12 @@ const initialSetupData: UserSetupData = {
   diasDisponiveis: [],
 };
 
-const normalizedDayMap: Record<string, string> = {
-  Segunda: 'Segunda-feira',
-  'Segunda-feira': 'Segunda-feira',
-  Terça: 'Terça-feira',
-  'Terça-feira': 'Terça-feira',
-  Quarta: 'Quarta-feira',
-  'Quarta-feira': 'Quarta-feira',
-  Quinta: 'Quinta-feira',
-  'Quinta-feira': 'Quinta-feira',
-  Sexta: 'Sexta-feira',
-  'Sexta-feira': 'Sexta-feira',
-  Sábado: 'Sábado',
-  Domingo: 'Domingo',
-};
-
-function normalizeDaysForContext(days: string[]) {
-  return Array.from(
-    new Set(
-      days
-        .map((day) => normalizedDayMap[day] ?? day)
-        .filter((day) => Boolean(day))
-    )
-  );
-}
+const normalizeText = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 
 const SetupContext = createContext<SetupContextData | undefined>(undefined);
 
@@ -77,20 +60,33 @@ export function SetupProvider({ children }: SetupProviderProps) {
       try {
         const setupStored = await AsyncStorage.getItem(STORAGE_KEYS.SETUP);
 
-        if (setupStored) {
-          const parsedSetup = JSON.parse(setupStored) as UserSetupData;
-
-          setSetupData({
-            ...initialSetupData,
-            ...parsedSetup,
-            materias: Array.isArray(parsedSetup.materias)
-              ? parsedSetup.materias
-              : [],
-            diasDisponiveis: normalizeAvailableDays(
-              parsedSetup.diasDisponiveis ?? []
-            ),
-          });
+        if (!setupStored) {
+          setIsSetupLoaded(true);
+          return;
         }
+
+        const parsedSetup = JSON.parse(setupStored) as Partial<UserSetupData>;
+
+        setSetupData({
+          ...initialSetupData,
+          ...parsedSetup,
+          concurso: typeof parsedSetup.concurso === 'string' ? parsedSetup.concurso : '',
+          nivel: typeof parsedSetup.nivel === 'string' ? parsedSetup.nivel : '',
+          foco: typeof parsedSetup.foco === 'string' ? parsedSetup.foco : '',
+          disponibilidade:
+            typeof parsedSetup.disponibilidade === 'string'
+              ? parsedSetup.disponibilidade
+              : '',
+          examDate: typeof parsedSetup.examDate === 'string' ? parsedSetup.examDate : '',
+          materias: Array.isArray(parsedSetup.materias)
+            ? parsedSetup.materias
+                .map((subject) => String(subject).trim())
+                .filter(Boolean)
+            : [],
+          diasDisponiveis: Array.isArray(parsedSetup.diasDisponiveis)
+            ? normalizeAvailableDays(parsedSetup.diasDisponiveis.map(String))
+            : [],
+        });
       } catch (error) {
         console.log('Erro ao carregar setup', error);
       } finally {
@@ -106,10 +102,7 @@ export function SetupProvider({ children }: SetupProviderProps) {
 
     async function persistSetup() {
       try {
-        await AsyncStorage.setItem(
-          STORAGE_KEYS.SETUP,
-          JSON.stringify(setupData)
-        );
+        await AsyncStorage.setItem(STORAGE_KEYS.SETUP, JSON.stringify(setupData));
       } catch (error) {
         console.log('Erro ao salvar setup', error);
       }
@@ -122,22 +115,54 @@ export function SetupProvider({ children }: SetupProviderProps) {
     field: K,
     value: UserSetupData[K]
   ) {
-    setSetupData((prev) => ({
-      ...prev,
-      [field]:
-        field === 'diasDisponiveis'
-          ? normalizeAvailableDays(value as UserSetupData['diasDisponiveis'])
-          : value,
-    }));
+    setSetupData((prev) => {
+      if (field === 'diasDisponiveis') {
+        return {
+          ...prev,
+          diasDisponiveis: normalizeAvailableDays(
+            value as UserSetupData['diasDisponiveis']
+          ),
+        };
+      }
+
+      if (field === 'materias') {
+        const uniqueSubjects: string[] = [];
+        const seen = new Set<string>();
+
+        for (const subject of value as UserSetupData['materias']) {
+          const trimmed = subject.trim();
+          if (!trimmed) continue;
+
+          const normalized = normalizeText(trimmed);
+          if (seen.has(normalized)) continue;
+
+          seen.add(normalized);
+          uniqueSubjects.push(trimmed);
+        }
+
+        return {
+          ...prev,
+          materias: uniqueSubjects,
+        };
+      }
+
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   }
 
   function addSubject(subject: string) {
     const trimmed = subject.trim();
-
     if (!trimmed) return;
 
     setSetupData((prev) => {
-      if (prev.materias.includes(trimmed)) {
+      const alreadyExists = prev.materias.some(
+        (item) => normalizeText(item) === normalizeText(trimmed)
+      );
+
+      if (alreadyExists) {
         return prev;
       }
 
@@ -151,7 +176,9 @@ export function SetupProvider({ children }: SetupProviderProps) {
   function removeSubject(subject: string) {
     setSetupData((prev) => ({
       ...prev,
-      materias: prev.materias.filter((m) => m !== subject),
+      materias: prev.materias.filter(
+        (item) => normalizeText(item) !== normalizeText(subject)
+      ),
     }));
   }
 
@@ -163,17 +190,20 @@ export function SetupProvider({ children }: SetupProviderProps) {
   }
 
   function toggleAvailableDay(day: string) {
-    const normalizedDay = normalizedDayMap[day] ?? day;
-
     setSetupData((prev) => {
-      const currentDays = normalizeDaysForContext(prev.diasDisponiveis);
-      const alreadySelected = currentDays.includes(normalizedDay);
+      const normalizedTarget = normalizeAvailableDays([day])[0];
+      if (!normalizedTarget) return prev;
+
+      const currentDays = normalizeAvailableDays(prev.diasDisponiveis);
+      const alreadySelected = currentDays.includes(normalizedTarget);
+
+      const nextDays = alreadySelected
+        ? currentDays.filter((item) => item !== normalizedTarget)
+        : [...currentDays, normalizedTarget];
 
       return {
         ...prev,
-        diasDisponiveis: alreadySelected
-          ? currentDays.filter((item) => item !== normalizedDay)
-          : [...currentDays, normalizedDay],
+        diasDisponiveis: normalizeAvailableDays(nextDays),
       };
     });
   }
@@ -183,6 +213,15 @@ export function SetupProvider({ children }: SetupProviderProps) {
       ...prev,
       diasDisponiveis: [],
     }));
+  }
+
+  async function resetSetup() {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.SETUP);
+      setSetupData(initialSetupData);
+    } catch (error) {
+      console.log('Erro ao resetar setup', error);
+    }
   }
 
   const value = useMemo(
@@ -195,15 +234,12 @@ export function SetupProvider({ children }: SetupProviderProps) {
       clearSubjects,
       toggleAvailableDay,
       clearAvailableDays,
+      resetSetup,
     }),
     [setupData, isSetupLoaded]
   );
 
-  return (
-    <SetupContext.Provider value={value}>
-      {children}
-    </SetupContext.Provider>
-  );
+  return <SetupContext.Provider value={value}>{children}</SetupContext.Provider>;
 }
 
 export function useSetupContext() {

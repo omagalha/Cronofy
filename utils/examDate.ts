@@ -1,5 +1,7 @@
+export type CountdownTone = 'empty' | 'neutral' | 'warning' | 'urgent';
+
 export const getDaysUntilExam = (examDate: string): number | null => {
-  if (!examDate) return null;
+  if (!examDate?.trim()) return null;
 
   const today = new Date();
   const exam = new Date(examDate);
@@ -16,7 +18,7 @@ export const getDaysUntilExam = (examDate: string): number | null => {
 };
 
 export const formatExamDate = (examDate: string): string => {
-  if (!examDate) return 'Data não definida';
+  if (!examDate?.trim()) return 'Defina a data da prova';
 
   const date = new Date(examDate);
 
@@ -32,16 +34,23 @@ export const formatExamDate = (examDate: string): string => {
 };
 
 export const getCountdownTone = (
-  daysUntilExam: number | null
-): 'neutral' | 'warning' | 'urgent' => {
-  if (daysUntilExam === null) return 'neutral';
-  if (daysUntilExam <= 30) return 'urgent';
+  examDate: string
+): CountdownTone => {
+  const daysUntilExam = getDaysUntilExam(examDate);
+
+  if (daysUntilExam === null) return 'empty';
+  if (daysUntilExam === 0) return 'urgent';
+  if (daysUntilExam < 30) return 'urgent';
   if (daysUntilExam <= 90) return 'warning';
   return 'neutral';
 };
 
-export const getCountdownLabel = (daysUntilExam: number | null): string => {
-  if (daysUntilExam === null) return 'Defina a data da prova';
+export const getCountdownLabel = (examDate: string): string => {
+  const daysUntilExam = getDaysUntilExam(examDate);
+
+  if (daysUntilExam === null) {
+    return 'Defina a data da prova';
+  }
 
   if (daysUntilExam < 0) {
     return 'A data da prova já passou';

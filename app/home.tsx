@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import React, { useMemo } from 'react';
 import {
+  Alert,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,7 +16,6 @@ import {
   formatExamDate,
   getCountdownLabel,
   getCountdownTone,
-  getDaysUntilExam,
 } from '../utils/examDate';
 import { getSubjectProgressMap } from '../utils/scheduleEngine';
 
@@ -33,6 +33,7 @@ export default function HomeScreen() {
   const {
     setupData,
     schedule,
+    persistedSchedule,
     isScheduleStale,
     refreshSchedule,
     completeBlockById,
@@ -44,7 +45,7 @@ export default function HomeScreen() {
   }, []);
 
   const todaySchedule = useMemo(() => {
-    return schedule.find((day) => day.day === todayName);
+    return schedule.find((day) => day.day === todayName) ?? null;
   }, [schedule, todayName]);
 
   const totalBlocks = useMemo(() => {
@@ -64,32 +65,30 @@ export default function HomeScreen() {
   }, [todaySchedule]);
 
   const subjectProgressEntries = useMemo(() => {
-    const progressMap = getSubjectProgressMap(schedule);
-
+    const progressMap = getSubjectProgressMap(persistedSchedule);
     return Object.entries(progressMap).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [schedule]);
-
-  const daysUntilExam = useMemo(() => {
-    return getDaysUntilExam(setupData.examDate);
-  }, [setupData.examDate]);
+  }, [persistedSchedule]);
 
   const countdownLabel = useMemo(() => {
-    return getCountdownLabel(daysUntilExam);
-  }, [daysUntilExam]);
+    return getCountdownLabel(setupData.examDate);
+  }, [setupData.examDate]);
 
   const formattedExamDate = useMemo(() => {
     return formatExamDate(setupData.examDate);
   }, [setupData.examDate]);
 
   const countdownTone = useMemo(() => {
-    return getCountdownTone(daysUntilExam);
-  }, [daysUntilExam]);
+    return getCountdownTone(setupData.examDate);
+  }, [setupData.examDate]);
 
   const handleRefreshSchedule = () => {
     const result = refreshSchedule();
 
     if (!result.success) {
-      console.log('Não foi possível atualizar o cronograma:', result.errors);
+      Alert.alert(
+        'Não foi possível atualizar',
+        result.errors?.join('\n') || 'Revise seu setup antes de atualizar.'
+      );
     }
   };
 
@@ -124,9 +123,7 @@ export default function HomeScreen() {
               style={styles.warningButton}
               onPress={handleRefreshSchedule}
             >
-              <Text style={styles.warningButtonText}>
-                Atualizar cronograma
-              </Text>
+              <Text style={styles.warningButtonText}>Atualizar cronograma</Text>
             </Pressable>
           </View>
         )}
@@ -192,9 +189,7 @@ export default function HomeScreen() {
 
             <Text style={styles.summaryText}>
               Prova:{' '}
-              <Text style={styles.summaryStrong}>
-                {formattedExamDate}
-              </Text>
+              <Text style={styles.summaryStrong}>{formattedExamDate}</Text>
             </Text>
 
             <Text style={styles.summaryText}>
@@ -295,7 +290,7 @@ export default function HomeScreen() {
 
         <Pressable
           style={styles.secondaryButton}
-          onPress={() => router.push('/setup')}
+          onPress={() => router.replace('/setup')}
         >
           <Text style={styles.secondaryButtonText}>Refazer setup</Text>
         </Pressable>

@@ -17,7 +17,6 @@ export type StudyBlock = {
   duration: string;
   type?: StudyBlockType;
   tip?: string;
-
   completed?: boolean;
   completedAt?: string;
   skipped?: boolean;
@@ -35,12 +34,19 @@ export type ScheduleMeta = {
   setupHash: string;
 };
 
+export type SubjectProgressSnapshot = {
+  completedSessionKeys: string[];
+  completedSessionsBySubject: Record<string, number>;
+  targetSessionsBySubject: Record<string, number>;
+};
+
 export type PersistedSchedule = {
   days: ScheduleDay[];
   meta: ScheduleMeta;
+  progress: SubjectProgressSnapshot;
 };
 
-const ENGINE_VERSION = '1.0.0';
+const ENGINE_VERSION = '1.2.0';
 
 const DEFAULT_DAYS = [
   'Segunda-feira',
@@ -57,7 +63,7 @@ const DAY_LABEL_MAP: Record<string, string> = {
 
   ter: 'Terça-feira',
   terca: 'Terça-feira',
-  'terça': 'Terça-feira',
+  terça: 'Terça-feira',
   'terca-feira': 'Terça-feira',
   'terça-feira': 'Terça-feira',
 
@@ -75,7 +81,7 @@ const DAY_LABEL_MAP: Record<string, string> = {
 
   sab: 'Sábado',
   sabado: 'Sábado',
-  'sábado': 'Sábado',
+  sábado: 'Sábado',
 
   dom: 'Domingo',
   domingo: 'Domingo',
@@ -145,6 +151,188 @@ const normalizeSetupData = (setupData: UserSetupData): UserSetupData => {
     examDate: setupData.examDate.trim(),
     materias: sanitizeSubjects(setupData.materias),
     diasDisponiveis: normalizeAvailableDays(setupData.diasDisponiveis),
+  };
+};
+
+const normalizeSubjectForProgress = (subject: string): string => {
+  return subject.replace(/^Revis[aã]o\s*-\s*/i, '').trim();
+};
+
+const createLocalDateStamp = (value: string | Date): string | null => {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const date = value instanceof Date ? new Date(value) : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
+const createCompletedSessionKey = (
+  dayLabel: string,
+  block: Pick<StudyBlock, 'subject' | 'time' | 'type'>,
+  completedAt: string | Date
+): string | null => {
+  const dateStamp = createLocalDateStamp(completedAt);
+
+  if (!dateStamp) {
+    return null;
+  }
+
+  return [
+    dateStamp,
+    normalizeText(dayLabel),
+    normalizeText(normalizeSubjectForProgress(block.subject)),
+    block.time,
+    block.type ?? 'new',
+  ].join('|');
+};
+
+const applyCompletedSessionsToDays = (
+  days: ScheduleDay[],
+  completedSessionKeys: string[]
+): ScheduleDay[] => {
+  const completedSessionKeySet = new Set(completedSessionKeys);
+  const todayStamp = createLocalDateStamp(new Date());
+
+  if (!todayStamp) {
+    return days;
+  }
+
+  return days.map((day) => ({
+    ...day,
+    blocks: day.blocks.map((block) => {
+      const completedSessionKey = createCompletedSessionKey(day.day, block, todayStamp);
+
+      if (!completedSessionKey || !completedSessionKeySet.has(completedSessionKey)) {
+        return block;
+      }
+
+      return {
+        ...block,
+        completed: true,
+        completedAt: new Date().toISOString(),
+      };
+    }),
+  }));
+};
+
+const countSessionsBySubject = (days: ScheduleDay[]): Record<string, number> => {
+  const sessionsBySubject: Record<string, number> = {};
+
+  for (const day of days) {
+    for (const block of day.blocks) {
+      const subject = normalizeSubjectForProgress(block.subject);
+
+      if (!subject) continue;
+
+      sessionsBySubject[subject] = (sessionsBySubject[subject] ?? 0) + 1;
+    }
+  }
+
+  return sessionsBySubject;
+};
+
+const countCompletedSessionsBySubject = (
+  days: ScheduleDay[]
+): {
+  completedSessionKeys: string[];
+  completedSessionsBySubject: Record<string, number>;
+} => {
+  const completedSessionKeys = new Set<string>();
+  const completedSessionsBySubject: Record<string, number> = {};
+
+  for (const day of days) {
+    for (const block of day.blocks) {
+      if (!block.completed) continue;
+
+      const subject = normalizeSubjectForProgress(block.subject);
+
+      if (!subject) continue;
+
+      const completedSessionKey = createCompletedSessionKey(
+        day.day,
+        block,
+        block.completedAt ?? new Date()
+      );
+
+      if (!completedSessionKey || completedSessionKeys.has(completedSessionKey)) {
+        continue;
+      }
+
+      completedSessionKeys.add(completedSessionKey);
+      completedSessionsBySubject[subject] =
+        (completedSessionsBySubject[subject] ?? 0) + 1;
+    }
+  }
+
+  return {
+    completedSessionKeys: Array.from(completedSessionKeys),
+    completedSessionsBySubject,
+  };
+};
+
+const getPlanningCyclesUntilExam = (examDate: string): number => {
+  const parsedExamDate = new Date(examDate);
+
+  if (Number.isNaN(parsedExamDate.getTime())) {
+    return 1;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  parsedExamDate.setHours(0, 0, 0, 0);
+
+  const diffMs = parsedExamDate.getTime() - today.getTime();
+  const daysUntilExam = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+  return Math.max(1, Math.ceil(daysUntilExam / 7));
+};
+
+const buildTargetSessionsBySubject = (
+  setupData: UserSetupData,
+  days: ScheduleDay[]
+): Record<string, number> => {
+  const weeklySessionsBySubject = countSessionsBySubject(days);
+  const planningCycles = getPlanningCyclesUntilExam(setupData.examDate);
+  const targetSessionsBySubject: Record<string, number> = {};
+
+  for (const [subject, weeklySessions] of Object.entries(weeklySessionsBySubject)) {
+    targetSessionsBySubject[subject] = Math.max(1, weeklySessions * planningCycles);
+  }
+
+  return targetSessionsBySubject;
+};
+
+export const createProgressSnapshotFromScheduleDays = (
+  days: ScheduleDay[]
+): SubjectProgressSnapshot => {
+  const { completedSessionKeys, completedSessionsBySubject } =
+    countCompletedSessionsBySubject(days);
+  const targetSessionsBySubject = countSessionsBySubject(days);
+
+  for (const [subject, completedSessions] of Object.entries(
+    completedSessionsBySubject
+  )) {
+    targetSessionsBySubject[subject] = Math.max(
+      targetSessionsBySubject[subject] ?? 0,
+      completedSessions,
+      1
+    );
+  }
+
+  return {
+    completedSessionKeys,
+    completedSessionsBySubject,
+    targetSessionsBySubject,
   };
 };
 
@@ -326,8 +514,9 @@ export const generateScheduleFromSubjects = (
 
   const regularBlockDuration = getBlockDurationByLevel(normalizedSetup.nivel);
   const reviewBlockDuration = getReviewDurationByLevel(normalizedSetup.nivel);
-  const isReviewFocus = normalizeText(normalizedSetup.foco).includes('revisao');
-  const isBaseForteFocus = normalizeText(normalizedSetup.foco).includes('base forte');
+  const normalizedFocus = normalizeText(normalizedSetup.foco);
+  const isReviewFocus = normalizedFocus.includes('revisao');
+  const isBaseForteFocus = normalizedFocus.includes('base forte');
 
   const schedule: ScheduleDay[] = [];
   let subjectCursor = 0;
@@ -386,10 +575,30 @@ export const generateScheduleFromSubjects = (
 };
 
 export const buildPersistedSchedule = (
-  setupData: UserSetupData
+  setupData: UserSetupData,
+  previousSchedule: PersistedSchedule | null = null
 ): PersistedSchedule => {
   const normalizedSetup = normalizeSetupData(setupData);
-  const days = generateScheduleFromSubjects(normalizedSetup);
+  const generatedDays = generateScheduleFromSubjects(normalizedSetup);
+  const previousProgress =
+    previousSchedule?.progress ??
+    createProgressSnapshotFromScheduleDays(previousSchedule?.days ?? []);
+  const completedSessionKeys = Array.from(
+    new Set(previousProgress.completedSessionKeys ?? [])
+  );
+  const days = applyCompletedSessionsToDays(generatedDays, completedSessionKeys);
+  const targetSessionsBySubject = buildTargetSessionsBySubject(normalizedSetup, days);
+  const completedSessionsBySubject: Record<string, number> = {};
+
+  for (const subject of Object.keys(targetSessionsBySubject)) {
+    const previousCompleted =
+      previousProgress.completedSessionsBySubject[subject] ?? 0;
+
+    completedSessionsBySubject[subject] = Math.min(
+      previousCompleted,
+      targetSessionsBySubject[subject]
+    );
+  }
 
   return {
     days,
@@ -398,14 +607,24 @@ export const buildPersistedSchedule = (
       engineVersion: ENGINE_VERSION,
       setupHash: createSetupHash(normalizedSetup),
     },
+    progress: {
+      completedSessionKeys,
+      completedSessionsBySubject,
+      targetSessionsBySubject,
+    },
   };
 };
 
 export const isScheduleOutdated = (
-  persistedSchedule: PersistedSchedule,
+  persistedSchedule: PersistedSchedule | null,
   currentSetupData: UserSetupData
 ): boolean => {
-  return persistedSchedule.meta.setupHash !== createSetupHash(currentSetupData);
+  if (!persistedSchedule) return true;
+
+  return (
+    persistedSchedule.meta.setupHash !== createSetupHash(currentSetupData) ||
+    persistedSchedule.meta.engineVersion !== ENGINE_VERSION
+  );
 };
 
 export const validateSetupBeforeSchedule = (
@@ -447,55 +666,88 @@ export const completeBlock = (
   schedule: PersistedSchedule,
   blockId: string
 ): PersistedSchedule => {
+  let completedSubject: string | null = null;
+  let completedSessionKey: string | null = null;
+  const completedAt = new Date().toISOString();
+
   const updatedDays = schedule.days.map((day) => ({
     ...day,
-    blocks: day.blocks.map((block) =>
-      block.id === blockId
-        ? {
-            ...block,
-            completed: true,
-            completedAt: new Date().toISOString(),
-          }
-        : block
-    ),
+    blocks: day.blocks.map((block) => {
+      if (block.id !== blockId) return block;
+      if (block.completed) return block;
+
+      completedSubject = normalizeSubjectForProgress(block.subject);
+      completedSessionKey = createCompletedSessionKey(day.day, block, completedAt);
+
+      return {
+        ...block,
+        completed: true,
+        completedAt,
+      };
+    }),
   }));
+
+  if (!completedSubject || !completedSessionKey) {
+    return {
+      ...schedule,
+      days: updatedDays,
+    };
+  }
+
+  if (schedule.progress.completedSessionKeys.includes(completedSessionKey)) {
+    return {
+      ...schedule,
+      days: updatedDays,
+    };
+  }
+
+  const targetSessions =
+    schedule.progress.targetSessionsBySubject[completedSubject] ?? 1;
+  const completedSessions =
+    schedule.progress.completedSessionsBySubject[completedSubject] ?? 0;
 
   return {
     ...schedule,
     days: updatedDays,
+    progress: {
+      ...schedule.progress,
+      completedSessionKeys: [
+        ...schedule.progress.completedSessionKeys,
+        completedSessionKey,
+      ],
+      completedSessionsBySubject: {
+        ...schedule.progress.completedSessionsBySubject,
+        [completedSubject]: Math.min(completedSessions + 1, targetSessions),
+      },
+    },
   };
 };
 
 export const getSubjectProgressMap = (
-  schedule: ScheduleDay[]
+  schedule: PersistedSchedule | null
 ): Record<string, number> => {
-  const stats: Record<string, { total: number; completed: number }> = {};
-
-  for (const day of schedule) {
-    for (const block of day.blocks) {
-      const rawSubject = block.subject.replace(/^Revisão\s*-\s*/i, '').trim();
-
-      if (!stats[rawSubject]) {
-        stats[rawSubject] = {
-          total: 0,
-          completed: 0,
-        };
-      }
-
-      stats[rawSubject].total += 1;
-
-      if (block.completed) {
-        stats[rawSubject].completed += 1;
-      }
-    }
-  }
+  if (!schedule) return {};
 
   const progressMap: Record<string, number> = {};
+  const progressSnapshot =
+    schedule.progress ?? createProgressSnapshotFromScheduleDays(schedule.days);
+  const subjects = new Set([
+    ...Object.keys(progressSnapshot.targetSessionsBySubject),
+    ...Object.keys(progressSnapshot.completedSessionsBySubject),
+  ]);
 
-  for (const subject of Object.keys(stats)) {
-    const { total, completed } = stats[subject];
-    progressMap[subject] = total > 0 ? completed / total : 0;
+  for (const subject of subjects) {
+    const targetSessions = progressSnapshot.targetSessionsBySubject[subject] ?? 0;
+    const completedSessions =
+      progressSnapshot.completedSessionsBySubject[subject] ?? 0;
+
+    progressMap[subject] =
+      targetSessions > 0
+        ? Math.max(0, Math.min(completedSessions / targetSessions, 1))
+        : 0;
   }
 
   return progressMap;
 };
+
+export const getEngineVersion = (): string => ENGINE_VERSION;

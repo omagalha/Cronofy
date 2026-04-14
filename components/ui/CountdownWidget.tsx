@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 type CountdownWidgetProps = {
   label: string;
   formattedDate: string;
-  tone?: 'neutral' | 'warning' | 'urgent';
+  tone?: 'empty' | 'neutral' | 'warning' | 'urgent';
 };
 
 export default function CountdownWidget({
@@ -13,6 +13,13 @@ export default function CountdownWidget({
   tone = 'neutral',
 }: CountdownWidgetProps) {
   const toneStyles = {
+    empty: {
+      card: styles.cardEmpty,
+      badge: styles.badgeEmpty,
+      badgeText: styles.badgeTextEmpty,
+      title: styles.titleEmpty,
+      date: styles.dateEmpty,
+    },
     neutral: {
       card: styles.cardNeutral,
       badge: styles.badgeNeutral,
@@ -87,6 +94,22 @@ const styles = StyleSheet.create({
   cardNeutral: {
     backgroundColor: '#FFFFFF',
     borderColor: '#E6EEF9',
+  },
+  cardEmpty: {
+    backgroundColor: '#F8FBFF',
+    borderColor: '#E6EEF9',
+  },
+  badgeEmpty: {
+    backgroundColor: '#EEF4FF',
+  },
+  badgeTextEmpty: {
+    color: '#5B6F94',
+  },
+  titleEmpty: {
+    color: '#31527C',
+  },
+  dateEmpty: {
+    color: '#7A8798',
   },
   badgeNeutral: {
     backgroundColor: '#EEF4FF',

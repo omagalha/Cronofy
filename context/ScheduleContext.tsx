@@ -11,6 +11,7 @@ import React, {
 import {
   buildPersistedSchedule,
   completeBlock,
+  createProgressSnapshotFromScheduleDays,
   isScheduleOutdated,
   PersistedSchedule,
   ScheduleDay,
@@ -31,15 +32,14 @@ type ScheduleContextData = {
   generateScheduleFromSubjects: () => GenerateScheduleResult;
   refreshSchedule: () => GenerateScheduleResult;
   completeBlockById: (blockId: string) => void;
+  clearSchedule: () => Promise<void>;
 };
 
 const STORAGE_KEYS = {
   SCHEDULE: '@cronofy/schedule',
 };
 
-function isPersistedScheduleShape(
-  value: unknown
-): value is PersistedSchedule {
+function isPersistedScheduleShape(value: unknown): value is PersistedSchedule {
   if (!value || typeof value !== 'object') return false;
 
   const candidate = value as PersistedSchedule;
@@ -51,6 +51,59 @@ function isPersistedScheduleShape(
     typeof candidate.meta.engineVersion === 'string' &&
     typeof candidate.meta.setupHash === 'string'
   );
+}
+
+function isNumericRecord(value: unknown): value is Record<string, number> {
+  if (!value || typeof value !== 'object') return false;
+
+  return Object.values(value).every((entry) => typeof entry === 'number');
+}
+
+function normalizeProgressSnapshot(
+  progress: unknown,
+  days: ScheduleDay[]
+): PersistedSchedule['progress'] {
+  const fallback = createProgressSnapshotFromScheduleDays(days);
+
+  if (!progress || typeof progress !== 'object') {
+    return fallback;
+  }
+
+  const candidate = progress as Partial<PersistedSchedule['progress']>;
+  const completedSessionKeys = Array.isArray(candidate.completedSessionKeys)
+    ? Array.from(
+        new Set(
+          candidate.completedSessionKeys.filter(
+            (entry): entry is string => typeof entry === 'string'
+          )
+        )
+      )
+    : fallback.completedSessionKeys;
+  const completedSessionsBySubject = isNumericRecord(
+    candidate.completedSessionsBySubject
+  )
+    ? candidate.completedSessionsBySubject
+    : fallback.completedSessionsBySubject;
+  const targetSessionsBySubject = isNumericRecord(candidate.targetSessionsBySubject)
+    ? candidate.targetSessionsBySubject
+    : fallback.targetSessionsBySubject;
+
+  return {
+    completedSessionKeys,
+    completedSessionsBySubject,
+    targetSessionsBySubject,
+  };
+}
+
+function hydratePersistedSchedule(
+  schedule: Omit<PersistedSchedule, 'progress'> & {
+    progress?: PersistedSchedule['progress'] | null;
+  }
+): PersistedSchedule {
+  return {
+    ...schedule,
+    progress: normalizeProgressSnapshot(schedule.progress, schedule.days),
+  };
 }
 
 const ScheduleContext = createContext<ScheduleContextData | undefined>(undefined);
@@ -69,29 +122,36 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
 
   const isScheduleStale = useMemo(() => {
     if (!persistedSchedule) return false;
+    if (!isSetupLoaded) return false;
+
     return isScheduleOutdated(persistedSchedule, setupData);
-  }, [persistedSchedule, setupData]);
+  }, [persistedSchedule, setupData, isSetupLoaded]);
 
   useEffect(() => {
     async function loadSchedule() {
       try {
         const scheduleStored = await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE);
 
-        if (scheduleStored) {
-          const parsedSchedule = JSON.parse(scheduleStored) as unknown;
+        if (!scheduleStored) {
+          setIsScheduleLoaded(true);
+          return;
+        }
 
-          if (isPersistedScheduleShape(parsedSchedule)) {
-            setPersistedSchedule(parsedSchedule);
-          } else if (Array.isArray(parsedSchedule)) {
-            setPersistedSchedule({
+        const parsedSchedule = JSON.parse(scheduleStored) as unknown;
+
+        if (isPersistedScheduleShape(parsedSchedule)) {
+          setPersistedSchedule(hydratePersistedSchedule(parsedSchedule));
+        } else if (Array.isArray(parsedSchedule)) {
+          setPersistedSchedule(
+            hydratePersistedSchedule({
               days: parsedSchedule as ScheduleDay[],
               meta: {
                 generatedAt: new Date().toISOString(),
                 engineVersion: 'legacy',
                 setupHash: '',
               },
-            });
-          }
+            })
+          );
         }
       } catch (error) {
         console.log('Erro ao carregar cronograma', error);
@@ -129,31 +189,45 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     const validation = validateSetupBeforeSchedule(setupData);
 
     if (!validation.isValid) {
-      setPersistedSchedule(null);
       return {
         success: false,
         errors: validation.errors,
       };
     }
 
-    const newPersistedSchedule = buildPersistedSchedule(setupData);
+    const newPersistedSchedule = buildPersistedSchedule(
+      setupData,
+      persistedSchedule
+    );
     setPersistedSchedule(newPersistedSchedule);
 
     return {
       success: true,
     };
-  }, [setupData]);
+  }, [setupData, persistedSchedule]);
 
   const refreshSchedule = useCallback((): GenerateScheduleResult => {
     return generateScheduleFromSubjects();
   }, [generateScheduleFromSubjects]);
 
-  const completeBlockById = useCallback((blockId: string) => {
-    if (!persistedSchedule) return;
+  const completeBlockById = useCallback(
+    (blockId: string) => {
+      if (!persistedSchedule) return;
 
-    const updatedSchedule = completeBlock(persistedSchedule, blockId);
-    setPersistedSchedule(updatedSchedule);
-  }, [persistedSchedule]);
+      const updatedSchedule = completeBlock(persistedSchedule, blockId);
+      setPersistedSchedule(updatedSchedule);
+    },
+    [persistedSchedule]
+  );
+
+  const clearSchedule = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.SCHEDULE);
+      setPersistedSchedule(null);
+    } catch (error) {
+      console.log('Erro ao limpar cronograma', error);
+    }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -164,6 +238,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      clearSchedule,
     }),
     [
       schedule,
@@ -173,12 +248,9 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      clearSchedule,
     ]
   );
-
-  if (!isSetupLoaded || !isScheduleLoaded) {
-    return null;
-  }
 
   return (
     <ScheduleContext.Provider value={value}>
@@ -196,30 +268,3 @@ export function useScheduleContext() {
 
   return context;
 }
-
-export const getSubjectProgress = (schedule: ScheduleDay[]) => {
-  const map: Record<string, { total: number; done: number }> = {};
-
-  schedule.forEach((day) => {
-    day.blocks.forEach((block) => {
-      if (!map[block.subject]) {
-        map[block.subject] = { total: 0, done: 0 };
-      }
-
-      map[block.subject].total += 1;
-
-      if (block.completed) {
-        map[block.subject].done += 1;
-      }
-    });
-  });
-
-  const result: Record<string, number> = {};
-
-  Object.keys(map).forEach((subject) => {
-    const { total, done } = map[subject];
-    result[subject] = total === 0 ? 0 : done / total;
-  });
-
-  return result;
-};

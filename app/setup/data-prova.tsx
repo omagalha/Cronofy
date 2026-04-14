@@ -18,7 +18,7 @@ export default function DataProvaScreen() {
 
   const handleContinue = () => {
     updateSetupField('examDate', value.trim());
-    router.push('/setup/nivel');
+    router.push('/setup/nivel?flow=wizard');
   };
 
   return (

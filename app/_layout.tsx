@@ -7,9 +7,12 @@ export default function RootLayout() {
     <AppProvider>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="auth/login" />
         <Stack.Screen name="home" />
         <Stack.Screen name="schedule" />
+
+        <Stack.Screen name="auth/login" />
+        <Stack.Screen name="auth/signin" />
+
         <Stack.Screen name="setup/index" />
         <Stack.Screen name="setup/concurso" />
         <Stack.Screen name="setup/data-prova" />
@@ -18,6 +21,9 @@ export default function RootLayout() {
         <Stack.Screen name="setup/disponibilidade" />
         <Stack.Screen name="setup/dias" />
         <Stack.Screen name="setup/materias" />
+
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="profile" />
       </Stack>
     </AppProvider>
   );
