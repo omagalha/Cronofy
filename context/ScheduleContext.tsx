@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { UserStudyLog } from '../utils/behaviorTracker';
 import {
   buildPersistedSchedule,
   completeBlock,
@@ -17,6 +18,7 @@ import {
   ScheduleDay,
   validateSetupBeforeSchedule,
 } from '../utils/scheduleEngine';
+import { useAIContext } from './AIContext';
 import { useSetupContext } from './SetupContext';
 
 type GenerateScheduleResult = {
@@ -79,11 +81,13 @@ function normalizeProgressSnapshot(
         )
       )
     : fallback.completedSessionKeys;
+
   const completedSessionsBySubject = isNumericRecord(
     candidate.completedSessionsBySubject
   )
     ? candidate.completedSessionsBySubject
     : fallback.completedSessionsBySubject;
+
   const targetSessionsBySubject = isNumericRecord(candidate.targetSessionsBySubject)
     ? candidate.targetSessionsBySubject
     : fallback.targetSessionsBySubject;
@@ -106,6 +110,36 @@ function hydratePersistedSchedule(
   };
 }
 
+function getStudyPeriodFromTime(
+  time: string
+): 'morning' | 'afternoon' | 'night' | 'unknown' {
+  const hour = Number(time.split(':')[0]);
+
+  if (Number.isNaN(hour)) return 'unknown';
+  if (hour < 12) return 'morning';
+  if (hour < 18) return 'afternoon';
+  return 'night';
+}
+
+function parseDurationToMinutes(duration: string): number {
+  const value = duration.trim().toLowerCase();
+
+  if (value.includes('h')) {
+    const hoursMatch = value.match(/(\d+)\s*h/);
+    const minutesMatch = value.match(/(\d+)\s*min/);
+
+    const hours = hoursMatch ? Number(hoursMatch[1]) : 0;
+    const minutes = minutesMatch ? Number(minutesMatch[1]) : 0;
+
+    if (!Number.isNaN(hours) || !Number.isNaN(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+
+  const numberOnly = parseInt(value.replace(/\D/g, ''), 10);
+  return Number.isNaN(numberOnly) ? 0 : numberOnly;
+}
+
 const ScheduleContext = createContext<ScheduleContextData | undefined>(undefined);
 
 type ScheduleProviderProps = {
@@ -114,6 +148,8 @@ type ScheduleProviderProps = {
 
 export function ScheduleProvider({ children }: ScheduleProviderProps) {
   const { setupData, isSetupLoaded } = useSetupContext();
+  const ai = useAIContext();
+
   const [persistedSchedule, setPersistedSchedule] =
     useState<PersistedSchedule | null>(null);
   const [isScheduleLoaded, setIsScheduleLoaded] = useState(false);
@@ -216,8 +252,45 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
 
       const updatedSchedule = completeBlock(persistedSchedule, blockId);
       setPersistedSchedule(updatedSchedule);
+
+      if (!ai.isAIEnabled) return;
+
+      const dayWithBlock = updatedSchedule.days.find((day) =>
+        day.blocks.some((block) => block.id === blockId)
+      );
+
+      if (!dayWithBlock) return;
+
+      const completedBlock = dayWithBlock.blocks.find(
+        (block) => block.id === blockId
+      );
+
+      if (!completedBlock) return;
+
+      const plannedBlocks = dayWithBlock.blocks.length;
+      const completedBlocks = dayWithBlock.blocks.filter(
+        (block) => block.completed
+      ).length;
+
+      const subjects = dayWithBlock.blocks.map((block) => block.subject);
+
+      const timeStudied = dayWithBlock.blocks
+        .filter((block) => block.completed)
+        .reduce((acc, block) => acc + parseDurationToMinutes(block.duration), 0);
+
+      const log: UserStudyLog = {
+        date: new Date().toISOString().slice(0, 10),
+        plannedBlocks,
+        completedBlocks,
+        subjects,
+        timeStudied,
+        period: getStudyPeriodFromTime(completedBlock.time),
+      };
+
+      const nextLogs = ai.upsertStudyLog(log);
+      ai.runAIAnalysis(nextLogs);
     },
-    [persistedSchedule]
+    [persistedSchedule, ai]
   );
 
   const clearSchedule = useCallback(async () => {

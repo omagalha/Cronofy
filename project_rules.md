@@ -1,385 +1,418 @@
-🚀 Cronofy — Project Rules v2
-
-🧠 Visão do Projeto
-
-Cronofy é um app de organização de estudos para concursos com foco em:
-
-- entrada simples (sem fricção)
-- valor imediato (cronograma automático)
-- progressão natural (uso → login → pro)
-- evolução para assistente inteligente (IA)
-
-O app deve parecer:
-- simples
-- premium
-- funcional desde o primeiro uso
-- limpo e sem poluição visual
-- escalável
+# 🌳 CRONOFY — APP TREE v2
 
 ---
 
-🧱 Arquitetura
+# 🎯 OBJETIVO
 
-📁 Estrutura
+Este documento define:
 
+* estrutura de pastas
+* telas do app
+* fluxo de navegação
+* funcionalidades atuais
+* roadmap (free → pro)
+
+Serve como guia para desenvolvimento e continuidade do projeto.
+
+---
+
+# 🧱 ESTRUTURA DE PASTAS
+
+```plaintext
 app/
   index.tsx
-  _layout.tsx
-
   home.tsx
   schedule.tsx
-
-  auth/
-    login.tsx
-    signin.tsx
 
   setup/
     index.tsx
     concurso.tsx
-    data-prova.tsx
     nivel.tsx
     foco.tsx
     disponibilidade.tsx
     dias.tsx
     materias.tsx
 
+  auth/ (futuro)
+    login.tsx
+    signup.tsx
+
 context/
+  AppContext.tsx
   SetupContext.tsx
   ScheduleContext.tsx
-  AppProvider.tsx
-  AppContext.tsx
-
-components/
-  ui/
-    ProgressRing.tsx
-    SubjectProgressCard.tsx
-    CountdownWidget.tsx
+  AIContext.tsx
 
 utils/
   scheduleEngine.ts
-  examDate.ts
+  behaviorTracker.ts
+  predictionEngine.ts
+  aiEngine.ts
 
-hooks/
-constants/
+components/
+  ui/
+    AIInsightsCard.tsx
+    SubjectProgressCard.tsx
+    CountdownWidget.tsx
+
+hooks/ (futuro)
+services/ (futuro)
+constants/ (futuro)
 assets/
+```
 
 ---
 
-🔥 Regras de Organização
+# 🧭 FLUXO DE NAVEGAÇÃO
 
-- app/ → telas
-- context/ → estado global
-- utils/ → regras de negócio
-- components/ui → UI reutilizável
-- hooks/ → lógica isolada
-
-❌ NÃO colocar lógica nas telas  
-❌ NÃO duplicar regras fora do engine  
-
----
-
-🧠 Contextos (ANTI-SPAGHETTI)
-
-SetupContext:
-- setupData
-- persistência
-- matérias
-- dias disponíveis
-
-ScheduleContext:
-- persistedSchedule
-- schedule
-- isScheduleStale
-- refreshSchedule
-- completeBlockById
-
-AppProvider:
-- combina Setup + Schedule
-
-AppContext:
-- ponte de consumo
-- useAppContext()
+```plaintext
+index.tsx
+   ↓
+setup (se não configurado)
+   ↓
+home
+   ↓
+schedule
+```
 
 ---
 
-🧠 Estado Global
-
-UserSetupData = {
-  concurso: string
-  examDate: string
-  nivel: string
-  foco: string
-  disponibilidade: string
-  materias: string[]
-  diasDisponiveis: string[]
-}
+# 📱 TELAS
 
 ---
 
-🧠 Cronograma
+## 🏁 `index.tsx`
 
-StudyBlock = {
-  id: string
-  subject: string
-  time: string
-  duration: string
-  type?: 'new' | 'review' | 'practice'
-  tip?: string
-  completed?: boolean
-  completedAt?: string
-  skipped?: boolean
-}
+### Responsabilidade:
 
-ScheduleDay = {
-  id: string
-  day: string
-  blocks: StudyBlock[]
-}
+* verificar se setup está completo
+* verificar se cronograma existe
+* redirecionar automaticamente
 
-PersistedSchedule = {
-  days: ScheduleDay[]
-  meta: {
-    generatedAt: string
-    engineVersion: string
-    setupHash: string
-  }
-}
+### Regras:
+
+```plaintext
+sem setup → /setup
+com setup + sem schedule → /setup
+com tudo → /home
+```
 
 ---
 
-🔁 Persistência
+## ⚙️ SETUP FLOW
 
-- usar AsyncStorage
-- salvar setupData e schedule
-- restaurar ao abrir o app
+### 📍 `setup/index.tsx`
 
----
-
-🧠 Cronograma Resiliente
-
-Obrigatório no engine:
-
-- createSetupHash
-- buildPersistedSchedule
-- isScheduleOutdated
-
-Se setup mudar:
-→ marcar cronograma como desatualizado
-
-UX:
-→ mostrar aviso
-→ permitir atualizar
-
-❌ NÃO sobrescrever automaticamente
+* tela inicial de configuração
+* lista de etapas
 
 ---
 
-📅 Regras do Cronograma
+### 📍 `setup/concurso.tsx`
 
-Blocos por dia:
-- até 1h → 1
-- 1–2h → 2
-- 2–4h → 3
-- +4h → 4
-
-Duração:
-- iniciante → 45min
-- intermediário → 1h
-- avançado → 1h30
-
-Foco:
-- rápida → rotação
-- base → equilíbrio
-- revisão → adiciona review
-- constância → limita blocos
+* usuário define objetivo (ex: Banco do Brasil)
 
 ---
 
-✅ Execução
+### 📍 `setup/nivel.tsx`
 
-completeBlock:
-- marca bloco como concluído
-- salva completed + completedAt
-
-Objetivo:
-→ transformar app em sistema de execução
+* iniciante / intermediário / avançado
 
 ---
 
-📊 Sistema de Progresso
+### 📍 `setup/foco.tsx`
 
-getSubjectProgressMap(schedule)
-
-- calcula progresso por matéria
-- normaliza "Revisão - X" → X
-
-UI:
-- SubjectProgressCard
-- ProgressRing
+* objetivo principal (ex: passar rápido)
 
 ---
 
-🎨 Progress Ring
+### 📍 `setup/disponibilidade.tsx`
 
-- círculo oco
-- borda fina
-- discreto
-- premium
-- sem exagero visual
+* horas por dia
 
 ---
 
-⏳ Sistema de Data da Prova
+### 📍 `setup/dias.tsx`
 
-campo:
-examDate: string
-
-formato:
-YYYY-MM-DD
-
-utils/examDate.ts:
-- getDaysUntilExam
-- formatExamDate
-- getCountdownTone
-- getCountdownLabel
-
-estados:
-- sem data → definir data
-- >90 dias → neutro
-- 30–90 → warning
-- <30 → urgente
-- hoje → "A prova é hoje"
+* dias disponíveis
 
 ---
 
-🚀 Countdown Widget
+### 📍 `setup/materias.tsx`
 
-- mostra dias restantes
-- mostra data formatada
-- muda cor por urgência
-
-posição:
-→ logo após o header
+* matérias do estudo
 
 ---
 
-📱 Home Screen
+## 🏠 `home.tsx`
 
-ordem:
+### Responsabilidade:
 
-Header
-Countdown
-Aviso stale
-Hero (hoje)
-Stats
-Resumo
-Progresso por matéria
-Blocos do dia
-Botões
+Tela principal do app
 
 ---
 
-Hero:
+### Componentes:
 
-- mostra dia atual
-- mostra próximo bloco NÃO concluído
+#### 🔹 Próximo bloco
 
-estados:
-- próximo bloco
-- tudo concluído
-- nenhum bloco
+* próximo estudo do dia
 
----
+#### 🔹 Progresso por matéria
 
-Stats:
+```plaintext
+SubjectProgressCard
+```
 
-- matérias
-- concluídos
-- blocos
+#### 🔹 IA (MUITO IMPORTANTE)
 
----
+```plaintext
+AIInsightsCard
+```
 
-Resumo:
+Mostra:
 
-- concurso
-- prova
-- nível
-- foco
-- disponibilidade
+* consistência
+* risco
+* melhor horário
+* ajuste sugerido
 
----
+#### 🔹 Countdown (opcional)
 
-Progresso:
-
-- lista de matérias
-- % concluído
-- círculo premium
+```plaintext
+CountdownWidget
+```
 
 ---
 
-Blocos:
+## 📅 `schedule.tsx`
 
-- subject
-- time
-- duration
-- tip
-- botão concluir
+### Responsabilidade:
 
----
-
-🔐 Login
-
-- opcional
-- só após valor entregue
+* visualizar cronograma completo
+* marcar blocos como concluídos
 
 ---
 
-💎 Free vs Pro
+### Interações:
 
-Free:
-- cronograma
-- progresso
-- countdown
-- execução
-
-Pro:
-- IA
-- insights
-- análise
-- sugestões
+✔ marcar bloco como concluído
+✔ atualizar progresso
+✔ disparar IA
 
 ---
 
-🎯 Estratégia
+### Integração principal:
 
-1. entrar sem fricção  
-2. gerar valor  
-3. engajar  
-4. salvar  
-5. monetizar  
-
----
-
-⚠️ Regras IMPORTANTES
-
-- NÃO travar usuário no início
-- NÃO paywall agressivo
-- SEMPRE mostrar valor antes
-- lógica no engine
-- UI limpa e premium
+```plaintext
+completeBlockById
+→ scheduleEngine
+→ AIContext
+→ aiEngine
+```
 
 ---
 
-🔮 Futuro
+# 🧠 SISTEMA DE IA NA UI
 
-- Firebase
-- sync
-- IA adaptativa
-- streak
-- dashboard
+## 📍 `AIInsightsCard.tsx`
+
+Mostra:
+
+* mensagem da IA
+* risco atual
+* sugestão
 
 ---
 
-🧠 Filosofia
+### Exemplo de dados:
 
-Simples → funcional → escalável → inteligente
+```plaintext
+"Seu risco de quebra está alto"
+"Você rende melhor à noite"
+"Reduza a carga para 70%"
+```
+
+---
+
+# 📦 FUNCIONALIDADES
+
+---
+
+## 🆓 FREE (ATUAL)
+
+✔ criação de cronograma
+✔ definição de matérias
+✔ persistência local
+✔ marcar blocos
+✔ progresso por matéria
+✔ IA básica
+✔ insights simples
+
+---
+
+## 💎 PRO (FUTURO)
+
+✔ histórico completo de desempenho
+✔ gráficos
+✔ previsões avançadas
+✔ adaptação automática do cronograma
+✔ widgets personalizados
+✔ login + sincronização
+✔ backup em nuvem
+✔ IA mais agressiva (replanejamento)
+
+---
+
+# 🔁 FLUXO INTERNO DO APP
+
+```plaintext
+usuário conclui bloco
+→ ScheduleContext
+→ completeBlock
+→ gerar UserStudyLog
+→ AIContext (upsert)
+→ aiEngine (análise)
+→ aiAnalysis
+→ Home renderiza insights
+```
+
+---
+
+# 🧠 RELAÇÃO ENTRE CAMADAS
+
+```plaintext
+UI (app/)
+↓
+Context (state)
+↓
+Engines (lógica)
+↓
+Dados do usuário
+```
+
+---
+
+# 📊 COMPONENTES IMPORTANTES
+
+---
+
+## 🔹 AIInsightsCard
+
+* consome `ai.aiAnalysis`
+* renderiza insights
+
+---
+
+## 🔹 SubjectProgressCard
+
+* progresso por matéria
+
+---
+
+## 🔹 CountdownWidget
+
+* dias até prova
+
+---
+
+# ⚠️ REGRAS IMPORTANTES
+
+---
+
+## 1. Separação de responsabilidade
+
+* UI → renderiza
+* Context → controla estado
+* Engine → calcula
+
+---
+
+## 2. IA NÃO fica na UI
+
+* IA fica no `aiEngine`
+* UI só consome resultado
+
+---
+
+## 3. Schedule NÃO contém IA
+
+* apenas dispara eventos
+
+---
+
+## 4. 1 log por dia
+
+usar:
+
+```plaintext
+upsertStudyLog
+```
+
+---
+
+# 🚀 ROADMAP
+
+---
+
+## Fase 1 (ATUAL)
+
+✔ estrutura
+✔ engine
+✔ IA integrada
+
+---
+
+## Fase 2
+
+* UI da IA bonita
+* melhorar UX
+* feedback visual
+
+---
+
+## Fase 3
+
+* histórico
+* gráficos
+* ranking pessoal
+
+---
+
+## Fase 4 (PRO)
+
+* login
+* nuvem
+* IA adaptativa completa
+
+---
+
+# 🧠 COMO USAR ESTE DOCUMENTO
+
+Ao iniciar novo chat:
+
+1. cole `project_rules.md`
+2. cole `app_tree.md`
+3. diga:
+
+```plaintext
+continuar Cronofy
+```
+
+---
+
+# 🔚 RESUMO
+
+Cronofy é:
+
+* um planner inteligente
+* com IA comportamental
+* focado em consistência
+* com evolução progressiva
+
+---
+
+👉 Esse arquivo define **como o app funciona visualmente e estruturalmente**
+👉 O `project_rules.md` define **como ele pensa**
+
+Juntos, você tem um sistema completo.
