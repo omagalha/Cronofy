@@ -1,14 +1,14 @@
 import {
-    UserStudyLog,
-    getAverageCompletionRate,
-    getBestStudyPeriod,
-    getConsistencyScore,
-    normalizeLogs,
+  UserStudyLog,
+  getAverageCompletionRate,
+  getBestStudyPeriod,
+  getConsistencyScore,
+  normalizeLogs,
 } from './behaviorTracker';
 import {
-    FailureRisk,
-    getFailureRisk,
-    getSuggestedLoadFactor,
+  FailureRisk,
+  getFailureRisk,
+  getSuggestedLoadFactor,
 } from './predictionEngine';
 
 export type CronofyInsight = {
@@ -103,4 +103,13 @@ export function analyzeStudyHistory(logs: UserStudyLog[]): CronofyAIAnalysis {
     suggestedLoadFactor,
     insights,
   };
+}
+
+export interface StudyLog {
+  date: string;
+  plannedBlocks: number;
+  completedBlocks: number;
+  subjects: string[];
+  timeStudied: number;
+  period: 'morning' | 'afternoon' | 'night' | 'unknown';
 }

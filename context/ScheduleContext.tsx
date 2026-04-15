@@ -8,7 +8,10 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { UserStudyLog } from '../utils/behaviorTracker';
+import {
+  AdaptivePlanningResult,
+  buildAdaptivePlan,
+} from '../utils/adaptivePlanningEngine';
 import {
   buildPersistedSchedule,
   completeBlock,
@@ -18,7 +21,7 @@ import {
   ScheduleDay,
   validateSetupBeforeSchedule,
 } from '../utils/scheduleEngine';
-import { useAIContext } from './AIContext';
+import { StudyLog, useAIContext } from './AIContext';
 import { useSetupContext } from './SetupContext';
 
 type GenerateScheduleResult = {
@@ -35,6 +38,10 @@ type ScheduleContextData = {
   refreshSchedule: () => GenerateScheduleResult;
   completeBlockById: (blockId: string) => void;
   clearSchedule: () => Promise<void>;
+  previewAdaptiveSchedule: ScheduleDay[];
+  adaptiveSuggestions: AdaptivePlanningResult['suggestions'];
+  adaptiveMetadata: AdaptivePlanningResult['metadata'] | null;
+  applyAdaptivePlan: () => void;
 };
 
 const STORAGE_KEYS = {
@@ -72,6 +79,7 @@ function normalizeProgressSnapshot(
   }
 
   const candidate = progress as Partial<PersistedSchedule['progress']>;
+
   const completedSessionKeys = Array.isArray(candidate.completedSessionKeys)
     ? Array.from(
         new Set(
@@ -111,8 +119,10 @@ function hydratePersistedSchedule(
 }
 
 function getStudyPeriodFromTime(
-  time: string
+  time?: string
 ): 'morning' | 'afternoon' | 'night' | 'unknown' {
+  if (!time) return 'unknown';
+
   const hour = Number(time.split(':')[0]);
 
   if (Number.isNaN(hour)) return 'unknown';
@@ -121,7 +131,9 @@ function getStudyPeriodFromTime(
   return 'night';
 }
 
-function parseDurationToMinutes(duration: string): number {
+function parseDurationToMinutes(duration: string | number): number {
+  if (typeof duration === 'number') return duration;
+
   const value = duration.trim().toLowerCase();
 
   if (value.includes('h')) {
@@ -235,6 +247,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       setupData,
       persistedSchedule
     );
+
     setPersistedSchedule(newPersistedSchedule);
 
     return {
@@ -272,19 +285,30 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
         (block) => block.completed
       ).length;
 
-      const subjects = dayWithBlock.blocks.map((block) => block.subject);
+      const subjects = Array.from(
+        new Set(
+          dayWithBlock.blocks
+            .map((block) => block.subject?.trim())
+            .filter((subject): subject is string => Boolean(subject))
+        )
+      );
 
       const timeStudied = dayWithBlock.blocks
         .filter((block) => block.completed)
-        .reduce((acc, block) => acc + parseDurationToMinutes(block.duration), 0);
+        .reduce(
+          (acc, block) => acc + parseDurationToMinutes(block.duration),
+          0
+        );
 
-      const log: UserStudyLog = {
+      const log: StudyLog = {
         date: new Date().toISOString().slice(0, 10),
         plannedBlocks,
         completedBlocks,
         subjects,
         timeStudied,
-        period: getStudyPeriodFromTime(completedBlock.time),
+        period: getStudyPeriodFromTime(
+          (completedBlock as ScheduleDay['blocks'][number] & { time?: string }).time
+        ),
       };
 
       const nextLogs = ai.upsertStudyLog(log);
@@ -292,6 +316,59 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     },
     [persistedSchedule, ai]
   );
+
+  const adaptivePlan = useMemo<AdaptivePlanningResult | null>(() => {
+    if (!persistedSchedule) return null;
+    if (!ai.isAIEnabled) return null;
+    if (!ai.isHydrated) return null;
+    if (!ai.studyLogs.length) return null;
+
+    return buildAdaptivePlan({
+      schedule: persistedSchedule.days,
+      studyLogs: ai.studyLogs,
+      analysis: ai.aiAnalysis,
+      setup: setupData,
+    });
+  }, [
+    persistedSchedule,
+    ai.isAIEnabled,
+    ai.isHydrated,
+    ai.studyLogs,
+    ai.aiAnalysis,
+    setupData,
+  ]);
+
+  const previewAdaptiveSchedule = useMemo(() => {
+    return adaptivePlan?.updatedSchedule ?? schedule;
+  }, [adaptivePlan, schedule]);
+
+  const adaptiveSuggestions = useMemo(() => {
+    return adaptivePlan?.suggestions ?? [];
+  }, [adaptivePlan]);
+
+  const adaptiveMetadata = useMemo(() => {
+    return adaptivePlan?.metadata ?? null;
+  }, [adaptivePlan]);
+
+  const applyAdaptivePlan = useCallback(() => {
+    if (!persistedSchedule || !adaptivePlan) return;
+
+    const updatedPersistedSchedule: PersistedSchedule = {
+      ...persistedSchedule,
+      days: adaptivePlan.updatedSchedule,
+      meta: {
+        ...persistedSchedule.meta,
+        generatedAt: new Date().toISOString(),
+        engineVersion: `${persistedSchedule.meta.engineVersion}-adaptive`,
+      },
+      progress: normalizeProgressSnapshot(
+        persistedSchedule.progress,
+        adaptivePlan.updatedSchedule
+      ),
+    };
+
+    setPersistedSchedule(updatedPersistedSchedule);
+  }, [persistedSchedule, adaptivePlan]);
 
   const clearSchedule = useCallback(async () => {
     try {
@@ -312,6 +389,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       refreshSchedule,
       completeBlockById,
       clearSchedule,
+      previewAdaptiveSchedule,
+      adaptiveSuggestions,
+      adaptiveMetadata,
+      applyAdaptivePlan,
     }),
     [
       schedule,
@@ -322,6 +403,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       refreshSchedule,
       completeBlockById,
       clearSchedule,
+      previewAdaptiveSchedule,
+      adaptiveSuggestions,
+      adaptiveMetadata,
+      applyAdaptivePlan,
     ]
   );
 
