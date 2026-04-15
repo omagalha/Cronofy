@@ -51,6 +51,7 @@ interface AIContextType {
   addStudyLog: (log: StudyLog) => void;
   upsertStudyLog: (log: StudyLog) => StudyLog[];
   runAIAnalysis: (logs?: StudyLog[]) => AIAnalysis | null;
+  resetAI: () => void;
   clearLogs: () => void;
 }
 
@@ -447,11 +448,19 @@ export function AIProvider({ children }: { children: ReactNode }) {
     return result;
   }, [studyLogs]);
 
-  const clearLogs = useCallback(() => {
+  const resetAI = useCallback(() => {
+    void AsyncStorage.multiRemove([
+      STORAGE_KEYS.STUDY_LOGS,
+      STORAGE_KEYS.STREAK,
+    ]);
     setStudyLogs([]);
     setAIAnalysis(null);
     setStreak(DEFAULT_STREAK);
   }, []);
+
+  const clearLogs = useCallback(() => {
+    resetAI();
+  }, [resetAI]);
 
   const value = useMemo(
     () => ({
@@ -464,6 +473,7 @@ export function AIProvider({ children }: { children: ReactNode }) {
       addStudyLog,
       upsertStudyLog,
       runAIAnalysis,
+      resetAI,
       clearLogs,
     }),
     [
@@ -476,6 +486,7 @@ export function AIProvider({ children }: { children: ReactNode }) {
       addStudyLog,
       upsertStudyLog,
       runAIAnalysis,
+      resetAI,
       clearLogs,
     ]
   );

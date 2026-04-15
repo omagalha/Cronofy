@@ -7,7 +7,9 @@ import { SetupProvider, useSetupContext } from './SetupContext';
 export type AppContextData =
   ReturnType<typeof useSetupContext> &
   ReturnType<typeof useScheduleContext> &
-  ReturnType<typeof useAIContext>;
+  ReturnType<typeof useAIContext> & {
+    resetAll: () => void;
+  };
 
 type AppProviderProps = {
   children: ReactNode;
@@ -29,11 +31,20 @@ export function useAppContext(): AppContextData {
   const ai = useAIContext();
 
   return useMemo(
-    () => ({
-      ...setup,
-      ...schedule,
-      ...ai,
-    }),
+    () => {
+      function resetAll() {
+        setup.resetSetup();
+        schedule.resetSchedule();
+        ai.resetAI();
+      }
+
+      return {
+        ...setup,
+        ...schedule,
+        ...ai,
+        resetAll,
+      };
+    },
     [setup, schedule, ai]
   );
 }

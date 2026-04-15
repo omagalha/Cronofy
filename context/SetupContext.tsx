@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -21,7 +22,7 @@ type SetupContextData = {
   clearSubjects: () => void;
   toggleAvailableDay: (day: string) => void;
   clearAvailableDays: () => void;
-  resetSetup: () => Promise<void>;
+  resetSetup: () => void;
 };
 
 const STORAGE_KEYS = {
@@ -215,14 +216,18 @@ export function SetupProvider({ children }: SetupProviderProps) {
     }));
   }
 
-  async function resetSetup() {
-    try {
-      await AsyncStorage.removeItem(STORAGE_KEYS.SETUP);
-      setSetupData(initialSetupData);
-    } catch (error) {
-      console.log('Erro ao resetar setup', error);
-    }
-  }
+  const resetSetup = useCallback(() => {
+    void AsyncStorage.removeItem(STORAGE_KEYS.SETUP);
+    setSetupData({
+      concurso: '',
+      nivel: '',
+      foco: '',
+      disponibilidade: '',
+      diasDisponiveis: [],
+      materias: [],
+      examDate: '',
+    });
+  }, []);
 
   const value = useMemo(
     () => ({

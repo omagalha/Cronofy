@@ -37,6 +37,7 @@ type ScheduleContextData = {
   generateScheduleFromSubjects: () => GenerateScheduleResult;
   refreshSchedule: () => GenerateScheduleResult;
   completeBlockById: (blockId: string) => void;
+  resetSchedule: () => void;
   clearSchedule: () => Promise<void>;
   previewAdaptiveSchedule: ScheduleDay[];
   adaptiveSuggestions: AdaptivePlanningResult['suggestions'];
@@ -370,14 +371,14 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     setPersistedSchedule(updatedPersistedSchedule);
   }, [persistedSchedule, adaptivePlan]);
 
-  const clearSchedule = useCallback(async () => {
-    try {
-      await AsyncStorage.removeItem(STORAGE_KEYS.SCHEDULE);
-      setPersistedSchedule(null);
-    } catch (error) {
-      console.log('Erro ao limpar cronograma', error);
-    }
+  const resetSchedule = useCallback(() => {
+    void AsyncStorage.removeItem(STORAGE_KEYS.SCHEDULE);
+    setPersistedSchedule(null);
   }, []);
+
+  const clearSchedule = useCallback(async () => {
+    resetSchedule();
+  }, [resetSchedule]);
 
   const value = useMemo(
     () => ({
@@ -388,6 +389,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      resetSchedule,
       clearSchedule,
       previewAdaptiveSchedule,
       adaptiveSuggestions,
@@ -402,6 +404,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      resetSchedule,
       clearSchedule,
       previewAdaptiveSchedule,
       adaptiveSuggestions,

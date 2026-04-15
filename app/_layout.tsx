@@ -1,14 +1,14 @@
 import { Stack } from 'expo-router';
 import React from 'react';
-import { AppProvider } from '../context/AppProvider';
+import { AppProvider } from '../context/AppContext';
 
 export default function RootLayout() {
   return (
     <AppProvider>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="home" />
-        <Stack.Screen name="schedule" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" />
 
         <Stack.Screen name="auth/login" />
         <Stack.Screen name="auth/signin" />
@@ -23,7 +23,6 @@ export default function RootLayout() {
         <Stack.Screen name="setup/materias" />
 
         <Stack.Screen name="onboarding" />
-        <Stack.Screen name="profile" />
       </Stack>
     </AppProvider>
   );
