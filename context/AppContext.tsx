@@ -1,4 +1,13 @@
-import React, { createContext, ReactNode, useContext, useState } from 'react';
+import React, {
+  createContext,
+  ReactNode,
+  useContext,
+  useMemo,
+  useState,
+} from 'react';
+import { useAIContext } from './AIContext';
+import { useScheduleContext } from './ScheduleContext';
+import { useSetupContext } from './SetupContext';
 
 // Definindo a interface para o contexto da IA
 interface AIContextType {
@@ -68,3 +77,22 @@ export const useAI = () => {
   }
   return context;
 };
+
+export type AppContextData = ReturnType<typeof useSetupContext> &
+  ReturnType<typeof useScheduleContext> &
+  ReturnType<typeof useAIContext>;
+
+export function useAppContext(): AppContextData {
+  const setup = useSetupContext();
+  const schedule = useScheduleContext();
+  const ai = useAIContext();
+
+  return useMemo(
+    () => ({
+      ...setup,
+      ...schedule,
+      ...ai,
+    }),
+    [setup, schedule, ai]
+  );
+}
