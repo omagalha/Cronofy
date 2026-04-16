@@ -1,21 +1,29 @@
-export type ReviewStatus = 'pending' | 'scheduled' | 'completed' | 'expired';
+export type ReviewStage =
+  | 'r1_24h'
+  | 'r2_7d'
+  | 'r3_30d'
+  | 'reinforcement';
 
 export type ReviewReason =
   | 'scheduled_review'
-  | 'high_difficulty'
+  | 'manual_doubt'
   | 'low_confidence'
-  | 'manual_doubt';
+  | 'high_difficulty'
+  | 'missed_block_recovery';
+
+export type ReviewStatus = 'pending' | 'completed' | 'skipped';
 
 export interface IReviewItem {
   id: string;
-  blockId: string;
+  sourceBlockId: string;
   subject: string;
-  dueDate: string;
+  stage: ReviewStage;
   createdAt: string;
+  dueDate: string;
   status: ReviewStatus;
-  confidenceScore?: number | null;
-  completedAt?: string | null;
-
-  reviewNote?: string | null;
-  reviewReason?: ReviewReason;
+  priority: number;
+  confidenceScore: number | null;
+  completedAt: string | null;
+  reviewNote: string | null;
+  reviewReason: ReviewReason;
 }

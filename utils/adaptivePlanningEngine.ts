@@ -1,4 +1,13 @@
-import { IReviewItem } from '../apps/shared/types/review';
+import type { UserPhase } from '../apps/shared/types/intelligence';
+import type { IReviewItem } from '../apps/shared/types/review';
+import type { AIAnalysis, StudyLog } from '../context/AIContext';
+import { getDaysUntilExam, resolveUserPhase } from './phaseEngine';
+import {
+  calculateActualProgressFromDays,
+  calculateExpectedProgressFromDays,
+  calculateMinimumRequiredProgress,
+} from './progressEngine';
+import { generateReviewsFromCompletedBlock } from './reviewEngine';
 
 export type Weekday =
   | 'monday'
@@ -20,29 +29,32 @@ export interface StudyBlock {
   plannedEndTime?: string;
   confidenceScore?: number | null;
   reviewNote?: string | null;
+  mode?:
+    | 'focus'
+    | 'review'
+    | 'questions'
+    | 'simulado'
+    | 'planning'
+    | 'recovery';
+  type?: 'new' | 'review' | 'practice';
+  status?: 'pending' | 'in_progress' | 'completed' | 'skipped' | 'rescheduled';
+  originBlockId?: string | null;
+  isRecoveryInsertion?: boolean;
+  isWeeklyRecoveryBlock?: boolean;
 }
+
 export interface ScheduleDay {
+  id?: string;
+  day?: string;
   date: string;
   weekday: Weekday;
   blocks: StudyBlock[];
-}
-
-export interface StudyLog {
-  date: string;
-  plannedBlocks: number;
-  completedBlocks: number;
-  subjects: string[];
-  timeStudied: number;
-  period: 'morning' | 'afternoon' | 'night' | 'unknown';
-}
-
-export interface AIAnalysis {
-  consistencyScore?: number;
-  completionRate?: number;
-  currentRiskLevel?: 'low' | 'medium' | 'high';
-  suggestedLoadFactor?: number;
-  bestStudyPeriod?: string | null;
-  hardestSubject?: string | null;
+  isRecoveryDay?: boolean;
+  hasWeeklyRecoveryBlock?: boolean;
+  expectedBlocksCount?: number;
+  completedBlocksCount?: number;
+  plannedLoadMinutes?: number;
+  completedLoadMinutes?: number;
 }
 
 export interface UserSetupData {
@@ -76,14 +88,21 @@ export interface AdaptivePlanningResult {
     loadReducedBlocks: number;
     reviewBlocksInserted: number;
     rebalanceActions: number;
+    recoveryBlocksUsed: number;
+    expectedProgress: number;
+    actualProgress: number;
+    minimumRequiredProgress: number;
+    userPhase: UserPhase;
   };
 }
 
-interface BuildAdaptivePlanInput {
+export interface BuildAdaptivePlanInput {
   schedule: ScheduleDay[];
   studyLogs: StudyLog[];
   analysis?: AIAnalysis | null;
   setup?: UserSetupData;
+  reviewQueue?: IReviewItem[];
+  generatedAt?: string;
 }
 
 export interface AdaptiveCompletionMetrics {
@@ -92,6 +111,8 @@ export interface AdaptiveCompletionMetrics {
   perceivedDifficulty?: number | null;
   confidenceScore?: number | null;
 }
+
+const DEFAULT_TIME_SLOTS = ['08:00', '10:00', '14:00', '16:00', '18:00', '20:00'];
 
 const cloneSchedule = (schedule: ScheduleDay[]): ScheduleDay[] =>
   schedule.map((day) => ({
@@ -102,9 +123,40 @@ const cloneSchedule = (schedule: ScheduleDay[]): ScheduleDay[] =>
 const normalizeSubjectName = (value: string): string =>
   value.trim().toLowerCase();
 
-const isPastDay = (date: string): boolean => {
+const getDayMetrics = (day: ScheduleDay): ScheduleDay => {
+  const plannedLoadMinutes = day.blocks.reduce(
+    (acc, block) => acc + Math.max(0, Math.round(block.duration || 0)),
+    0
+  );
+  const completedLoadMinutes = day.blocks
+    .filter((block) => block.completed)
+    .reduce((acc, block) => acc + Math.max(0, Math.round(block.duration || 0)), 0);
+
+  return {
+    ...day,
+    hasWeeklyRecoveryBlock: day.blocks.some((block) => block.isWeeklyRecoveryBlock),
+    isRecoveryDay:
+      day.blocks.length > 0 &&
+      day.blocks.every((block) => (block.mode ?? 'focus') === 'recovery'),
+    expectedBlocksCount: day.blocks.length,
+    completedBlocksCount: day.blocks.filter((block) => block.completed).length,
+    plannedLoadMinutes,
+    completedLoadMinutes,
+  };
+};
+
+const applyDayMetrics = (schedule: ScheduleDay[]): ScheduleDay[] =>
+  schedule.map((day) => getDayMetrics(day));
+
+const isPastDay = (date?: string): boolean => {
+  if (!date) return false;
+
   const today = new Date();
   const target = new Date(date);
+
+  if (Number.isNaN(target.getTime())) {
+    return false;
+  }
 
   today.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
@@ -112,9 +164,15 @@ const isPastDay = (date: string): boolean => {
   return target.getTime() < today.getTime();
 };
 
-const isFutureOrToday = (date: string): boolean => {
+const isFutureOrToday = (date?: string): boolean => {
+  if (!date) return false;
+
   const today = new Date();
   const target = new Date(date);
+
+  if (Number.isNaN(target.getTime())) {
+    return false;
+  }
 
   today.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
@@ -122,10 +180,16 @@ const isFutureOrToday = (date: string): boolean => {
   return target.getTime() >= today.getTime();
 };
 
-const getIncompletePastBlocks = (schedule: ScheduleDay[]): StudyBlock[] => {
-  return schedule
-    .filter((day) => isPastDay(day.date))
-    .flatMap((day) => day.blocks.filter((block) => !block.completed));
+const getIncompletePastBlocks = (
+  schedule: ScheduleDay[]
+): Array<{ day: ScheduleDay; block: StudyBlock }> => {
+  return schedule.flatMap((day) =>
+    isPastDay(day.date)
+      ? day.blocks
+          .filter((block) => !block.completed)
+          .map((block) => ({ day, block }))
+      : []
+  );
 };
 
 const getFutureDays = (schedule: ScheduleDay[]): ScheduleDay[] => {
@@ -201,37 +265,69 @@ const getRecentFailureTrend = (studyLogs: StudyLog[]): number => {
   return failures / recent.length;
 };
 
+const getReviewPriorityBlock = (reviewQueue: IReviewItem[]): IReviewItem | null => {
+  const pendingItems = reviewQueue.filter((item) => item.status === 'pending');
+
+  if (!pendingItems.length) return null;
+
+  return [...pendingItems].sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return b.priority - a.priority;
+    }
+
+    return a.dueDate.localeCompare(b.dueDate);
+  })[0];
+};
+
 const shouldReduceLoad = (
+  phase: UserPhase,
   analysis?: AIAnalysis | null,
   studyLogs?: StudyLog[]
 ): boolean => {
-  if (!analysis) return false;
-
   const failureTrend = getRecentFailureTrend(studyLogs ?? []);
 
-  if (analysis.currentRiskLevel === 'high') return true;
+  if (phase === 'fatigue_risk') return true;
+  if (phase === 'building_base' && (analysis?.consistencyScore ?? 1) < 0.6) {
+    return true;
+  }
+  if (analysis?.currentRiskLevel === 'high') return true;
   if (failureTrend > 0.6) return true;
-  if ((analysis.consistencyScore ?? 1) < 0.5) return true;
-  if ((analysis.completionRate ?? 1) < 0.55) return true;
-  if ((analysis.suggestedLoadFactor ?? 1) < 0.9) return true;
+  if ((analysis?.completionRate ?? 1) < 0.55) return true;
 
   return false;
 };
 
 const shouldInsertReview = (
+  phase: UserPhase,
+  reviewQueue: IReviewItem[],
   analysis?: AIAnalysis | null,
   studyLogs?: StudyLog[]
 ): boolean => {
-  const weakestSubject = getWeakestSubject(studyLogs ?? [], analysis);
-  if (!weakestSubject) return false;
+  if (reviewQueue.some((item) => item.status === 'pending')) {
+    return true;
+  }
 
   const failureTrend = getRecentFailureTrend(studyLogs ?? []);
 
   return (
-    (analysis?.completionRate ?? 1) < 0.75 ||
-    analysis?.currentRiskLevel === 'medium' ||
-    failureTrend >= 0.4
+    phase === 'consolidating' ||
+    phase === 'sprint_to_exam' ||
+    (phase === 'gaining_rhythm' &&
+      ((analysis?.completionRate ?? 1) < 0.75 ||
+        analysis?.currentRiskLevel === 'medium' ||
+        failureTrend >= 0.4))
   );
+};
+
+const getPhaseLoadFactor = (
+  phase: UserPhase,
+  analysis?: AIAnalysis | null
+): number => {
+  if (phase === 'fatigue_risk') return 0.75;
+  if (phase === 'building_base') return 0.85;
+  if (phase === 'sprint_to_exam') return 0.85;
+
+  return Math.min(Math.max(analysis?.suggestedLoadFactor ?? 0.95, 0.8), 1);
 };
 
 const safeTrimDuration = (duration: number, factor: number): number => {
@@ -252,7 +348,7 @@ const reduceFutureLoad = (
     for (const block of day.blocks) {
       if (block.completed) continue;
 
-      const oldDuration = block.duration;
+      const oldDuration = Math.max(25, Math.round(block.duration || 0));
       const newDuration = safeTrimDuration(oldDuration, factor);
 
       if (newDuration < oldDuration) {
@@ -262,90 +358,125 @@ const reduceFutureLoad = (
     }
   }
 
-  return { schedule: next, affectedBlocks };
+  return {
+    schedule: applyDayMetrics(next),
+    affectedBlocks,
+  };
+};
+
+const getNextBlockTime = (blocks: StudyBlock[]): string => {
+  return DEFAULT_TIME_SLOTS[Math.min(blocks.length, DEFAULT_TIME_SLOTS.length - 1)];
 };
 
 const recoverMissedBlocks = (
   schedule: ScheduleDay[]
 ): { schedule: ScheduleDay[]; recovered: number } => {
   const next = cloneSchedule(schedule);
-  const missedBlocks = getIncompletePastBlocks(schedule).map((block) => ({
+  const missedBlocks = getIncompletePastBlocks(schedule).map(({ block }) => ({
     ...block,
   }));
   const futureDays = getFutureDays(next);
 
   if (missedBlocks.length === 0 || futureDays.length === 0) {
-    return { schedule: next, recovered: 0 };
+    return { schedule: applyDayMetrics(next), recovered: 0 };
   }
 
   let recovered = 0;
   let cursor = 0;
 
   for (const block of missedBlocks) {
-    const targetDay = futureDays[cursor % futureDays.length];
+    const preferredRecoveryDay =
+      futureDays.find((day) => day.hasWeeklyRecoveryBlock) ??
+      futureDays[cursor % futureDays.length];
 
-    targetDay.blocks.push({
+    const alreadyRecovered = preferredRecoveryDay.blocks.some(
+      (entry) =>
+        entry.originBlockId === (block.originBlockId ?? block.id) &&
+        entry.isRecoveryInsertion
+    );
+
+    if (alreadyRecovered) {
+      cursor += 1;
+      continue;
+    }
+
+    preferredRecoveryDay.blocks.push({
       ...block,
       id: `${block.id}-recovered-${recovered + 1}`,
       completed: false,
-      scheduledDate: targetDay.date,
+      status: 'pending',
+      scheduledDate: preferredRecoveryDay.date,
+      plannedStartTime: block.plannedStartTime ?? getNextBlockTime(preferredRecoveryDay.blocks),
+      originBlockId: block.originBlockId ?? block.id,
+      isRecoveryInsertion: true,
     });
 
     recovered += 1;
     cursor += 1;
   }
 
-  return { schedule: next, recovered };
+  return { schedule: applyDayMetrics(next), recovered };
 };
 
 const insertReviewBlock = (
   schedule: ScheduleDay[],
-  subject: string
+  reviewItem: Pick<IReviewItem, 'id' | 'sourceBlockId' | 'subject' | 'stage' | 'priority'>
 ): { schedule: ScheduleDay[]; inserted: number } => {
   const next = cloneSchedule(schedule);
   const futureDays = getFutureDays(next);
 
   if (futureDays.length === 0) {
-    return { schedule: next, inserted: 0 };
+    return { schedule: applyDayMetrics(next), inserted: 0 };
   }
 
-  const targetDay = futureDays[0];
+  const targetDay =
+    futureDays.find((day) => day.hasWeeklyRecoveryBlock) ?? futureDays[0];
 
-  const alreadyHasReview = targetDay.blocks.some(
+  const reviewBlockId = `review-block-${reviewItem.id}`;
+  const alreadyScheduled = targetDay.blocks.some(
     (block) =>
-      normalizeSubjectName(block.subject) ===
-      normalizeSubjectName(`${subject} - Revisão`)
+      block.id === reviewBlockId ||
+      (block.originBlockId === reviewItem.sourceBlockId &&
+        (block.mode ?? 'focus') === 'review')
   );
 
-  if (alreadyHasReview) {
-    return { schedule: next, inserted: 0 };
+  if (alreadyScheduled) {
+    return { schedule: applyDayMetrics(next), inserted: 0 };
   }
 
   targetDay.blocks.unshift({
-    id: `review-${normalizeSubjectName(subject)}-${targetDay.date}`,
-    subject: `${subject} - Revisão`,
-    duration: 30,
+    id: reviewBlockId,
+    subject: `RevisÃ£o - ${reviewItem.subject}`,
+    duration: reviewItem.stage === 'reinforcement' ? 25 : 30,
     completed: false,
     difficulty: 1,
     scheduledDate: targetDay.date,
+    plannedStartTime: getNextBlockTime([]),
+    confidenceScore: null,
+    reviewNote: null,
+    mode: 'review',
+    type: 'review',
+    status: 'pending',
+    originBlockId: reviewItem.sourceBlockId,
   });
 
-  return { schedule: next, inserted: 1 };
+  return { schedule: applyDayMetrics(next), inserted: 1 };
 };
 
 const rebalanceTowardWeakSubject = (
   schedule: ScheduleDay[],
-  weakSubject: string | null
+  weakSubject: string | null,
+  phase: UserPhase
 ): { schedule: ScheduleDay[]; actions: number } => {
-  if (!weakSubject) {
-    return { schedule: cloneSchedule(schedule), actions: 0 };
+  if (!weakSubject || phase === 'fatigue_risk') {
+    return { schedule: applyDayMetrics(cloneSchedule(schedule)), actions: 0 };
   }
 
   const next = cloneSchedule(schedule);
   const futureDays = getFutureDays(next);
 
   if (futureDays.length === 0) {
-    return { schedule: next, actions: 0 };
+    return { schedule: applyDayMetrics(next), actions: 0 };
   }
 
   const firstFutureDay = futureDays[0];
@@ -356,7 +487,7 @@ const rebalanceTowardWeakSubject = (
   );
 
   if (hasWeakSubjectAlready) {
-    return { schedule: next, actions: 0 };
+    return { schedule: applyDayMetrics(next), actions: 0 };
   }
 
   const donorDay = futureDays.find((day) =>
@@ -368,7 +499,7 @@ const rebalanceTowardWeakSubject = (
   );
 
   if (!donorDay) {
-    return { schedule: next, actions: 0 };
+    return { schedule: applyDayMetrics(next), actions: 0 };
   }
 
   const donorBlock = donorDay.blocks.find(
@@ -378,28 +509,61 @@ const rebalanceTowardWeakSubject = (
   );
 
   if (!donorBlock) {
-    return { schedule: next, actions: 0 };
+    return { schedule: applyDayMetrics(next), actions: 0 };
   }
+
+  const nextMode = phase === 'sprint_to_exam' ? 'questions' : 'focus';
 
   firstFutureDay.blocks.push({
     ...donorBlock,
     id: `${donorBlock.id}-rebalance-${normalizeSubjectName(weakSubject)}`,
     subject: weakSubject,
-    duration: Math.max(30, Math.round(donorBlock.duration * 0.8)),
+    duration:
+      phase === 'sprint_to_exam'
+        ? Math.max(25, Math.round(donorBlock.duration * 0.7))
+        : Math.max(30, Math.round(donorBlock.duration * 0.85)),
     completed: false,
     difficulty: donorBlock.difficulty ?? 2,
     scheduledDate: firstFutureDay.date,
+    plannedStartTime: donorBlock.plannedStartTime ?? getNextBlockTime(firstFutureDay.blocks),
+    mode: nextMode,
+    type: nextMode === 'questions' ? 'practice' : donorBlock.type ?? 'new',
+    status: 'pending',
+    originBlockId: donorBlock.originBlockId ?? donorBlock.id,
   });
 
-  return { schedule: next, actions: 1 };
+  return { schedule: applyDayMetrics(next), actions: 1 };
+};
+
+const getRecoveryBlocksUsed = (
+  schedule: ScheduleDay[],
+  studyLogs: StudyLog[]
+): number => {
+  if (studyLogs.length > 0) {
+    return studyLogs
+      .slice(-7)
+      .reduce((acc, log) => acc + (log.weeklyRecoveryBlockUsed ?? 0), 0);
+  }
+
+  return schedule.reduce(
+    (acc, day) =>
+      acc +
+      day.blocks.filter(
+        (block) => block.isWeeklyRecoveryBlock && block.completed
+      ).length,
+    0
+  );
 };
 
 export function buildAdaptivePlan({
   schedule,
   studyLogs,
   analysis,
+  setup,
+  reviewQueue = [],
+  generatedAt,
 }: BuildAdaptivePlanInput): AdaptivePlanningResult {
-  let workingSchedule = cloneSchedule(schedule);
+  let workingSchedule = applyDayMetrics(cloneSchedule(schedule));
   const suggestions: AdaptiveSuggestion[] = [];
 
   let delayedBlocksRecovered = 0;
@@ -408,6 +572,11 @@ export function buildAdaptivePlan({
   let rebalanceActions = 0;
 
   const weakestSubject = getWeakestSubject(studyLogs, analysis);
+  const daysUntilExam = getDaysUntilExam(setup?.examDate);
+  const userPhase = resolveUserPhase({
+    analysis: analysis ?? null,
+    daysUntilExam,
+  });
 
   const recovered = recoverMissedBlocks(workingSchedule);
   workingSchedule = recovered.schedule;
@@ -416,19 +585,15 @@ export function buildAdaptivePlan({
   if (delayedBlocksRecovered > 0) {
     suggestions.push({
       type: 'recover_missed_blocks',
-      title: 'Blocos perdidos redistribuídos',
+      title: 'Blocos atrasados absorvidos',
       description:
-        'O plano recuperou automaticamente blocos atrasados e os redistribuiu nos próximos dias.',
+        'O plano redistribuiu blocos perdidos nos prÃ³ximos dias para proteger a continuidade.',
       impact: delayedBlocksRecovered >= 3 ? 'high' : 'medium',
     });
   }
 
-  if (shouldReduceLoad(analysis, studyLogs)) {
-    const factor = Math.min(
-      Math.max(analysis?.suggestedLoadFactor ?? 0.85, 0.7),
-      0.95
-    );
-
+  if (shouldReduceLoad(userPhase, analysis, studyLogs)) {
+    const factor = getPhaseLoadFactor(userPhase, analysis);
     const reduced = reduceFutureLoad(workingSchedule, factor);
     workingSchedule = reduced.schedule;
     loadReducedBlocks = reduced.affectedBlocks;
@@ -436,15 +601,48 @@ export function buildAdaptivePlan({
     if (loadReducedBlocks > 0) {
       suggestions.push({
         type: 'reduce_load',
-        title: 'Carga futura reduzida',
+        title: 'Carga futura ajustada',
         description:
-          'O sistema reduziu levemente a duração dos próximos blocos para proteger consistência e evitar sobrecarga.',
-        impact: analysis?.currentRiskLevel === 'high' ? 'high' : 'medium',
+          userPhase === 'fatigue_risk'
+            ? 'Os blocos futuros foram encurtados para proteger consistÃªncia e reduzir fadiga.'
+            : 'A duraÃ§Ã£o dos prÃ³ximos blocos foi ajustada para manter o plano sustentÃ¡vel.',
+        impact: userPhase === 'fatigue_risk' ? 'high' : 'medium',
       });
     }
   }
 
-  const rebalanced = rebalanceTowardWeakSubject(workingSchedule, weakestSubject);
+  const priorityReview = getReviewPriorityBlock(reviewQueue);
+
+  if (shouldInsertReview(userPhase, reviewQueue, analysis, studyLogs)) {
+    const reviewTarget =
+      priorityReview ?? {
+        id: `synthetic-review-${normalizeSubjectName(weakestSubject ?? 'review')}`,
+        sourceBlockId: weakestSubject ?? 'review',
+        subject: weakestSubject ?? 'RevisÃ£o estratÃ©gica',
+        stage: 'reinforcement' as const,
+        priority: 4,
+      };
+
+    const review = insertReviewBlock(workingSchedule, reviewTarget);
+    workingSchedule = review.schedule;
+    reviewBlocksInserted = review.inserted;
+
+    if (reviewBlocksInserted > 0) {
+      suggestions.push({
+        type: 'insert_review',
+        title: 'RevisÃ£o espaÃ§ada priorizada',
+        description:
+          'O cronograma reservou um bloco curto de revisÃ£o para reforÃ§ar retenÃ§Ã£o e reduzir esquecimento.',
+        impact: priorityReview?.priority === 5 ? 'high' : 'medium',
+      });
+    }
+  }
+
+  const rebalanced = rebalanceTowardWeakSubject(
+    workingSchedule,
+    weakestSubject,
+    userPhase
+  );
   workingSchedule = rebalanced.schedule;
   rebalanceActions = rebalanced.actions;
 
@@ -453,26 +651,20 @@ export function buildAdaptivePlan({
       type: 'rebalance_subject',
       title: `Mais foco em ${weakestSubject}`,
       description:
-        'O cronograma aumentou o foco na matéria com mais sinais de dificuldade recente.',
+        userPhase === 'sprint_to_exam'
+          ? 'O cronograma aumentou blocos de questÃµes e reforÃ§o na matÃ©ria mais sensÃ­vel.'
+          : 'O cronograma ampliou espaÃ§o para a matÃ©ria com pior sinal recente de desempenho.',
       impact: 'medium',
     });
   }
 
-  if (shouldInsertReview(analysis, studyLogs) && weakestSubject) {
-    const review = insertReviewBlock(workingSchedule, weakestSubject);
-    workingSchedule = review.schedule;
-    reviewBlocksInserted = review.inserted;
-
-    if (reviewBlocksInserted > 0) {
-      suggestions.push({
-        type: 'insert_review',
-        title: 'Revisão estratégica inserida',
-        description:
-          'Foi inserido um bloco curto de revisão para reforçar retenção na matéria mais frágil.',
-        impact: 'medium',
-      });
-    }
-  }
+  const actualProgress = calculateActualProgressFromDays(workingSchedule);
+  const expectedProgress = calculateExpectedProgressFromDays(workingSchedule);
+  const minimumRequiredProgress = calculateMinimumRequiredProgress(
+    setup?.examDate,
+    generatedAt ?? workingSchedule[0]?.date
+  );
+  const recoveryBlocksUsed = getRecoveryBlocksUsed(workingSchedule, studyLogs);
 
   if (
     suggestions.length === 0 &&
@@ -481,21 +673,39 @@ export function buildAdaptivePlan({
   ) {
     suggestions.push({
       type: 'protect_consistency',
-      title: 'Plano mantido',
+      title: 'Estrutura preservada',
       description:
-        'O comportamento recente está saudável. O sistema preservou a estrutura atual para não gerar atrito desnecessário.',
+        'O sistema manteve o plano atual para evitar atrito desnecessario e sustentar o bom ritmo.',
       impact: 'low',
     });
   }
 
+  if (
+    userPhase === 'sprint_to_exam' &&
+    actualProgress + 0.15 < minimumRequiredProgress
+  ) {
+    suggestions.push({
+      type: 'protect_consistency',
+      title: 'Ritmo abaixo do mÃ­nimo competitivo',
+      description:
+        'O plano estÃ¡ abaixo da progressÃ£o mÃ­nima esperada para a prova. Vale priorizar revisÃ£o e execuÃ§Ã£o nos prÃ³ximos dias.',
+      impact: 'high',
+    });
+  }
+
   return {
-    updatedSchedule: workingSchedule,
+    updatedSchedule: applyDayMetrics(workingSchedule),
     suggestions,
     metadata: {
       delayedBlocksRecovered,
       loadReducedBlocks,
       reviewBlocksInserted,
       rebalanceActions,
+      recoveryBlocksUsed,
+      expectedProgress,
+      actualProgress,
+      minimumRequiredProgress,
+      userPhase,
     },
   };
 }
@@ -506,59 +716,26 @@ export class AdaptivePlanningEngine {
   }
 
   calculateExpectedProgress(schedule: ScheduleDay[]): number {
-    const totalBlocks = schedule.reduce((acc, day) => acc + day.blocks.length, 0);
-
-    if (totalBlocks === 0) return 0;
-
-    const completedBlocks = schedule.reduce(
-      (acc, day) => acc + day.blocks.filter((block) => block.completed).length,
-      0
-    );
-
-    return Number((completedBlocks / totalBlocks).toFixed(2));
+    return calculateExpectedProgressFromDays(schedule);
   }
 
   createReviewItem(block: StudyBlock): IReviewItem[] {
     if (!block.id || !block.subject) return [];
 
-    const now = new Date();
-    const dueDate = new Date(now);
-
-    const hasManualDoubt = Boolean(block.reviewNote?.trim());
-    const hasLowConfidence =
-      typeof block.confidenceScore === 'number' && block.confidenceScore <= 2;
-    const hasHighDifficulty =
-      typeof block.difficulty === 'number' && block.difficulty >= 4;
-
-    if (hasManualDoubt) {
-      dueDate.setDate(dueDate.getDate() + 1);
-    } else if (hasLowConfidence || hasHighDifficulty) {
-      dueDate.setDate(dueDate.getDate() + 2);
-    } else {
-      dueDate.setDate(dueDate.getDate() + 7);
-    }
-
-    return [
-      {
-        id: `review-item-${block.id}-${now.getTime()}`,
-        blockId: block.id,
-        subject: block.subject,
-        createdAt: now.toISOString(),
-        dueDate: dueDate.toISOString(),
-        status: 'pending',
-        confidenceScore: block.confidenceScore ?? null,
-        completedAt: null,
-        reviewNote: block.reviewNote ?? null,
-        reviewReason: hasManualDoubt
-          ? 'manual_doubt'
-          : hasLowConfidence
-          ? 'low_confidence'
-          : hasHighDifficulty
-          ? 'high_difficulty'
-          : 'scheduled_review',
-      },
-    ];
+    return generateReviewsFromCompletedBlock({
+      id: block.id,
+      subject: block.subject,
+      time: block.plannedStartTime ?? '20:00',
+      duration: `${Math.max(25, Math.round(block.duration || 0))}min`,
+      type: block.type ?? 'new',
+      mode: block.mode ?? 'focus',
+      completed: block.completed,
+      perceivedDifficulty: block.difficulty ?? null,
+      confidenceScore: block.confidenceScore ?? null,
+      reviewNote: block.reviewNote ?? null,
+    });
   }
+
   updateReviewItem(item: IReviewItem): IReviewItem {
     return {
       ...item,

@@ -1,3 +1,6 @@
+import type { BlockStatus, UserPhase } from '../apps/shared/types/intelligence';
+import { calculateExpectedProgressFromDays } from './progressEngine';
+
 export type UserSetupData = {
   concurso: string;
   examDate: string;
@@ -9,7 +12,13 @@ export type UserSetupData = {
 };
 
 export type StudyBlockType = 'new' | 'review' | 'practice';
-export type ScheduleBlockMode = 'focus' | 'review' | 'recovery';
+export type ScheduleBlockMode =
+  | 'focus'
+  | 'review'
+  | 'questions'
+  | 'simulado'
+  | 'planning'
+  | 'recovery';
 
 export type StudyBlock = {
   id: string;
@@ -20,22 +29,33 @@ export type StudyBlock = {
   mode?: ScheduleBlockMode;
   tip?: string;
   completed?: boolean;
-  completedAt?: string;
   skipped?: boolean;
+  status?: BlockStatus;
+  completedAt?: string;
+  startedAt?: string | null;
+  rescheduledTo?: string | null;
   interruptionCount?: number | null;
   perceivedEnergyLevel?: number | null;
   perceivedDifficulty?: number | null;
   confidenceScore?: number | null;
   reviewNote?: string | null;
+  generatedReviewIds?: string[];
+  originBlockId?: string | null;
+  isRecoveryInsertion?: boolean;
+  isWeeklyRecoveryBlock?: boolean;
 };
 
 export type ScheduleDay = {
   id: string;
   day: string;
+  date?: string;
   blocks: StudyBlock[];
   isRecoveryDay?: boolean;
+  hasWeeklyRecoveryBlock?: boolean;
   expectedBlocksCount?: number;
   completedBlocksCount?: number;
+  plannedLoadMinutes?: number;
+  completedLoadMinutes?: number;
 };
 
 export type ScheduleMeta = {
@@ -50,14 +70,24 @@ export type SubjectProgressSnapshot = {
   targetSessionsBySubject: Record<string, number>;
 };
 
+export type ScheduleIntelligence = {
+  weeklyRecoveryBlockEnabled: boolean;
+  weeklyRecoveryBlockUsed: number;
+  recoveryDebt: number;
+  lastRebalancedAt?: string | null;
+  lastAdaptiveUpdateAt?: string | null;
+  userPhase?: UserPhase;
+};
+
 export type PersistedSchedule = {
   days: ScheduleDay[];
   meta: ScheduleMeta;
   progress: SubjectProgressSnapshot;
   expectedProgress?: number;
+  intelligence?: ScheduleIntelligence;
 };
 
-const ENGINE_VERSION = '1.2.0';
+const ENGINE_VERSION = '1.3.0';
 
 const DEFAULT_DAYS = [
   'Segunda-feira',
@@ -109,6 +139,16 @@ const DAY_ORDER: Record<string, number> = {
 };
 
 const SLOT_TIMES = ['08:00', '10:00', '14:00', '16:00', '18:00'] as const;
+const RECOVERY_BLOCK_TIME = '20:00';
+const JS_DAY_INDEX: Record<string, number> = {
+  Domingo: 0,
+  'Segunda-feira': 1,
+  'TerÃ§a-feira': 2,
+  'Quarta-feira': 3,
+  'Quinta-feira': 4,
+  'Sexta-feira': 5,
+  'SÃ¡bado': 6,
+};
 
 const normalizeText = (value: string): string =>
   value
@@ -187,6 +227,140 @@ const createLocalDateStamp = (value: string | Date): string | null => {
   return `${year}-${month}-${day}`;
 };
 
+export const parseDurationToMinutes = (duration: string | number): number => {
+  if (typeof duration === 'number') return duration;
+
+  const value = duration.trim().toLowerCase();
+
+  if (value.includes('h')) {
+    const hoursMatch = value.match(/(\d+)\s*h/);
+    const minutesMatch = value.match(/(\d+)\s*min/);
+
+    const hours = hoursMatch ? Number(hoursMatch[1]) : 0;
+    const minutes = minutesMatch ? Number(minutesMatch[1]) : 0;
+
+    if (!Number.isNaN(hours) || !Number.isNaN(minutes)) {
+      return hours * 60 + minutes;
+    }
+  }
+
+  const numberOnly = parseInt(value.replace(/\D/g, ''), 10);
+  return Number.isNaN(numberOnly) ? 0 : numberOnly;
+};
+
+export const formatMinutesToDuration = (minutes: number): string => {
+  const safeMinutes = Math.max(0, Math.round(minutes));
+
+  if (safeMinutes === 0) return '0min';
+  if (safeMinutes < 60) return `${safeMinutes}min`;
+
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+
+  if (remainingMinutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h${remainingMinutes}min`;
+};
+
+const getUpcomingDateForDay = (dayLabel: string, baseDate: Date): string | undefined => {
+  const targetDayIndex = JS_DAY_INDEX[dayLabel];
+
+  if (typeof targetDayIndex !== 'number') {
+    return undefined;
+  }
+
+  const next = new Date(baseDate);
+  next.setHours(0, 0, 0, 0);
+
+  const diff = (targetDayIndex - next.getDay() + 7) % 7;
+  next.setDate(next.getDate() + diff);
+
+  return createLocalDateStamp(next) ?? undefined;
+};
+
+const sortDaysByDate = (days: ScheduleDay[]): ScheduleDay[] => {
+  return [...days].sort((a, b) => {
+    if (a.date && b.date) return a.date.localeCompare(b.date);
+    if (a.date) return -1;
+    if (b.date) return 1;
+    return a.day.localeCompare(b.day);
+  });
+};
+
+const enrichScheduleDay = (day: ScheduleDay): ScheduleDay => {
+  const plannedLoadMinutes = day.blocks.reduce(
+    (acc, block) => acc + parseDurationToMinutes(block.duration),
+    0
+  );
+  const completedLoadMinutes = day.blocks
+    .filter((block) => block.completed)
+    .reduce((acc, block) => acc + parseDurationToMinutes(block.duration), 0);
+  const hasWeeklyRecoveryBlock = day.blocks.some(
+    (block) => block.isWeeklyRecoveryBlock
+  );
+  const isRecoveryDay =
+    day.blocks.length > 0 &&
+    day.blocks.every((block) => (block.mode ?? 'focus') === 'recovery');
+
+  return {
+    ...day,
+    hasWeeklyRecoveryBlock,
+    isRecoveryDay,
+    expectedBlocksCount: day.blocks.length,
+    completedBlocksCount: day.blocks.filter((block) => block.completed).length,
+    plannedLoadMinutes,
+    completedLoadMinutes,
+  };
+};
+
+const enrichScheduleDays = (days: ScheduleDay[]): ScheduleDay[] => {
+  return days.map((day) => enrichScheduleDay(day));
+};
+
+const calculateRecoveryDebt = (days: ScheduleDay[]): number => {
+  const todayStamp = createLocalDateStamp(new Date());
+
+  if (!todayStamp) {
+    return 0;
+  }
+
+  return days.reduce((acc, day) => {
+    if (!day.date || day.date >= todayStamp) {
+      return acc;
+    }
+
+    const pendingBlocks = day.blocks.filter(
+      (block) =>
+        !block.completed && !block.isRecoveryInsertion && !block.isWeeklyRecoveryBlock
+    ).length;
+
+    return acc + pendingBlocks;
+  }, 0);
+};
+
+const createScheduleIntelligence = (
+  days: ScheduleDay[],
+  previous?: ScheduleIntelligence,
+  overrides: Partial<ScheduleIntelligence> = {}
+): ScheduleIntelligence => {
+  return {
+    weeklyRecoveryBlockEnabled:
+      overrides.weeklyRecoveryBlockEnabled ??
+      previous?.weeklyRecoveryBlockEnabled ??
+      true,
+    weeklyRecoveryBlockUsed:
+      overrides.weeklyRecoveryBlockUsed ?? previous?.weeklyRecoveryBlockUsed ?? 0,
+    recoveryDebt: overrides.recoveryDebt ?? calculateRecoveryDebt(days),
+    lastRebalancedAt:
+      overrides.lastRebalancedAt ?? previous?.lastRebalancedAt ?? null,
+    lastAdaptiveUpdateAt:
+      overrides.lastAdaptiveUpdateAt ?? previous?.lastAdaptiveUpdateAt ?? null,
+    userPhase: overrides.userPhase ?? previous?.userPhase,
+  };
+};
+
 const createCompletedSessionKey = (
   dayLabel: string,
   block: Pick<StudyBlock, 'subject' | 'time' | 'type'>,
@@ -212,28 +386,35 @@ const applyCompletedSessionsToDays = (
   completedSessionKeys: string[]
 ): ScheduleDay[] => {
   const completedSessionKeySet = new Set(completedSessionKeys);
-  const todayStamp = createLocalDateStamp(new Date());
+  const now = new Date().toISOString();
 
-  if (!todayStamp) {
-    return days;
-  }
+  return enrichScheduleDays(
+    days.map((day) => ({
+      ...day,
+      blocks: day.blocks.map((block) => {
+        const completedSessionKey = createCompletedSessionKey(
+          day.day,
+          block,
+          day.date ?? now
+        );
 
-  return days.map((day) => ({
-    ...day,
-    blocks: day.blocks.map((block) => {
-      const completedSessionKey = createCompletedSessionKey(day.day, block, todayStamp);
+        if (
+          !completedSessionKey ||
+          !completedSessionKeySet.has(completedSessionKey)
+        ) {
+          return block;
+        }
 
-      if (!completedSessionKey || !completedSessionKeySet.has(completedSessionKey)) {
-        return block;
-      }
-
-      return {
-        ...block,
-        completed: true,
-        completedAt: new Date().toISOString(),
-      };
-    }),
-  }));
+        return {
+          ...block,
+          completed: true,
+          skipped: false,
+          status: 'completed',
+          completedAt: block.completedAt ?? now,
+        };
+      }),
+    }))
+  );
 };
 
 const countSessionsBySubject = (days: ScheduleDay[]): Record<string, number> => {
@@ -272,7 +453,7 @@ const countCompletedSessionsBySubject = (
       const completedSessionKey = createCompletedSessionKey(
         day.day,
         block,
-        block.completedAt ?? new Date()
+        day.date ?? block.completedAt ?? new Date()
       );
 
       if (!completedSessionKey || completedSessionKeys.has(completedSessionKey)) {
@@ -504,6 +685,24 @@ const createId = (prefix: string, ...parts: Array<string | number>): string => {
     .join('_');
 };
 
+function createWeeklyRecoveryBlock(day: string, index: number): StudyBlock {
+  return {
+    id: `block_${day}_recovery_${index}`,
+    subject: 'Bloco livre de recuperação',
+    time: RECOVERY_BLOCK_TIME,
+    duration: '30min',
+    mode: 'recovery',
+    type: 'review',
+    tip: 'Use este bloco para recuperar atrasos, revisar dÃºvidas ou reorganizar a semana.',
+    completed: false,
+    skipped: false,
+    status: 'pending',
+    generatedReviewIds: [],
+    isWeeklyRecoveryBlock: true,
+    isRecoveryInsertion: true,
+  };
+}
+
 export const generateScheduleFromSubjects = (
   setupData: UserSetupData
 ): ScheduleDay[] => {
@@ -531,6 +730,7 @@ export const generateScheduleFromSubjects = (
 
   const schedule: ScheduleDay[] = [];
   let subjectCursor = 0;
+  const baseDate = new Date();
 
   for (let dayIndex = 0; dayIndex < daysToUse.length; dayIndex += 1) {
     const day = daysToUse[dayIndex];
@@ -558,6 +758,10 @@ export const generateScheduleFromSubjects = (
         type,
         mode: type === 'review' ? 'review' : 'focus',
         tip: getTipForBlock(type, normalizedSetup.nivel, normalizedSetup.foco),
+        completed: false,
+        skipped: false,
+        status: 'pending',
+        generatedReviewIds: [],
       });
     }
 
@@ -574,20 +778,33 @@ export const generateScheduleFromSubjects = (
         type: 'review',
         mode: 'review',
         tip: getTipForBlock('review', normalizedSetup.nivel, normalizedSetup.foco),
+        completed: false,
+        skipped: false,
+        status: 'pending',
+        generatedReviewIds: [],
       });
     }
 
     schedule.push({
       id: createId('day', day, dayIndex + 1),
       day,
+      date: getUpcomingDateForDay(day, baseDate),
       blocks,
-      isRecoveryDay: false,
-      expectedBlocksCount: blocks.length,
-      completedBlocksCount: blocks.filter((block) => block.completed).length,
     });
   }
 
-  return schedule;
+  const datedSchedule = sortDaysByDate(schedule);
+
+  if (datedSchedule.length > 0) {
+    const lastDayIndex = datedSchedule.length - 1;
+    const targetDay = datedSchedule[lastDayIndex];
+
+    targetDay.blocks.push(
+      createWeeklyRecoveryBlock(targetDay.day, targetDay.blocks.length + 1)
+    );
+  }
+
+  return enrichScheduleDays(datedSchedule);
 };
 
 export const buildPersistedSchedule = (
@@ -602,7 +819,9 @@ export const buildPersistedSchedule = (
   const completedSessionKeys = Array.from(
     new Set(previousProgress.completedSessionKeys ?? [])
   );
-  const days = applyCompletedSessionsToDays(generatedDays, completedSessionKeys);
+  const days = enrichScheduleDays(
+    applyCompletedSessionsToDays(generatedDays, completedSessionKeys)
+  );
   const targetSessionsBySubject = buildTargetSessionsBySubject(normalizedSetup, days);
   const completedSessionsBySubject: Record<string, number> = {};
 
@@ -628,7 +847,8 @@ export const buildPersistedSchedule = (
       completedSessionsBySubject,
       targetSessionsBySubject,
     },
-    expectedProgress: 0,
+    expectedProgress: calculateExpectedProgressFromDays(days),
+    intelligence: createScheduleIntelligence(days, previousSchedule?.intelligence),
   };
 };
 
@@ -686,6 +906,10 @@ export const completeBlock = (
     Pick<
       StudyBlock,
       | 'mode'
+      | 'status'
+      | 'startedAt'
+      | 'rescheduledTo'
+      | 'skipped'
       | 'interruptionCount'
       | 'perceivedEnergyLevel'
       | 'perceivedDifficulty'
@@ -697,7 +921,8 @@ export const completeBlock = (
 ): PersistedSchedule => {
   let completedSubject: string | null = null;
   let completedSessionKey: string | null = null;
-  const completedAt = new Date().toISOString();
+  let usedWeeklyRecoveryBlock = false;
+  const completedAt = payload?.completedAt ?? new Date().toISOString();
 
   const updatedDays: ScheduleDay[] = schedule.days.map((day) => {
     const updatedBlocks: StudyBlock[] = day.blocks.map((block) => {
@@ -705,12 +930,21 @@ export const completeBlock = (
       if (block.completed) return block;
 
       completedSubject = normalizeSubjectForProgress(block.subject);
-      completedSessionKey = createCompletedSessionKey(day.day, block, completedAt);
+      completedSessionKey = createCompletedSessionKey(
+        day.day,
+        block,
+        day.date ?? completedAt
+      );
+      usedWeeklyRecoveryBlock = Boolean(block.isWeeklyRecoveryBlock);
 
       return {
         ...block,
         completed: true,
+        skipped: payload?.skipped ?? false,
+        status: 'completed',
         mode: payload?.mode ?? block.mode ?? 'focus',
+        startedAt: payload?.startedAt ?? block.startedAt ?? completedAt,
+        rescheduledTo: payload?.rescheduledTo ?? block.rescheduledTo ?? null,
         interruptionCount: payload?.interruptionCount ?? block.interruptionCount,
         perceivedEnergyLevel:
           payload?.perceivedEnergyLevel ?? block.perceivedEnergyLevel,
@@ -722,19 +956,25 @@ export const completeBlock = (
       };
     });
 
-    return {
+    return enrichScheduleDay({
       ...day,
       blocks: updatedBlocks,
-      completedBlocksCount: updatedBlocks.filter((block) => block.completed).length,
-      expectedBlocksCount: day.expectedBlocksCount ?? day.blocks.length,
-      isRecoveryDay: day.isRecoveryDay ?? false,
-    };
+    });
   });
+
+  const intelligence = createScheduleIntelligence(updatedDays, schedule.intelligence, {
+    weeklyRecoveryBlockUsed:
+      (schedule.intelligence?.weeklyRecoveryBlockUsed ?? 0) +
+      (usedWeeklyRecoveryBlock ? 1 : 0),
+  });
+  const expectedProgress = calculateExpectedProgressFromDays(updatedDays);
 
   if (!completedSubject || !completedSessionKey) {
     return {
       ...schedule,
       days: updatedDays,
+      expectedProgress,
+      intelligence,
     };
   }
 
@@ -742,6 +982,8 @@ export const completeBlock = (
     return {
       ...schedule,
       days: updatedDays,
+      expectedProgress,
+      intelligence,
     };
   }
 
@@ -764,6 +1006,8 @@ export const completeBlock = (
         [completedSubject]: Math.min(completedSessions + 1, targetSessions),
       },
     },
+    expectedProgress,
+    intelligence,
   };
 };
 
