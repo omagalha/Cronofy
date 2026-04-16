@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AdaptiveSuggestionsCard from '../../components/ui/AdaptiveSuggestionsCard';
 import { useAppContext } from '../../context/AppContext';
 
 type BlockItem = {
@@ -65,6 +66,8 @@ export default function HomeScreen() {
     aiAnalysis,
     streak,
     completeBlockById,
+    adaptiveSuggestions,
+    applyAdaptivePlan,
   } = useAppContext();
 
   const todayIndex = new Date().getDay();
@@ -188,6 +191,11 @@ export default function HomeScreen() {
             </>
           )}
         </View>
+
+        <AdaptiveSuggestionsCard
+          suggestions={adaptiveSuggestions}
+          onApply={applyAdaptivePlan}
+        />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Progresso de consistência</Text>

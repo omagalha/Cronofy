@@ -71,6 +71,7 @@ type ScheduleContextData = {
 const STORAGE_KEYS = {
   SCHEDULE: '@cronofy/schedule',
   REVIEW_QUEUE: '@cronofy/review_queue_v1',
+  LEGACY_TEXT_CLEANUP: '@cronofy/legacy_text_cleanup_v1',
 };
 
 const DEFAULT_BLOCK_TIMES = ['08:00', '10:00', '14:00', '16:00', '18:00', '20:00'];
@@ -654,6 +655,25 @@ function attachGeneratedReviewIds(
   });
 }
 
+async function runLegacyScheduleCleanupOnce() {
+  const alreadyCleaned = await AsyncStorage.getItem(
+    STORAGE_KEYS.LEGACY_TEXT_CLEANUP
+  );
+
+  if (alreadyCleaned) {
+    return;
+  }
+
+  await AsyncStorage.multiRemove([
+    STORAGE_KEYS.SCHEDULE,
+    STORAGE_KEYS.REVIEW_QUEUE,
+  ]);
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.LEGACY_TEXT_CLEANUP,
+    new Date().toISOString()
+  );
+}
+
 const ScheduleContext = createContext<ScheduleContextData | undefined>(undefined);
 
 type ScheduleProviderProps = {
@@ -681,6 +701,8 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   useEffect(() => {
     async function loadSchedule() {
       try {
+        await runLegacyScheduleCleanupOnce();
+
         const [scheduleStored, reviewQueueStored] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE),
           AsyncStorage.getItem(STORAGE_KEYS.REVIEW_QUEUE),

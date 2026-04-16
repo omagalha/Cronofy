@@ -1,4 +1,8 @@
-import type { UserPhase } from '../apps/shared/types/intelligence';
+import type {
+  BlockMode,
+  BlockStatus,
+  UserPhase,
+} from '../apps/shared/types/intelligence';
 import type { IReviewItem } from '../apps/shared/types/review';
 import type { AIAnalysis, StudyLog } from '../context/AIContext';
 import { getDaysUntilExam, resolveUserPhase } from './phaseEngine';
@@ -29,15 +33,9 @@ export interface StudyBlock {
   plannedEndTime?: string;
   confidenceScore?: number | null;
   reviewNote?: string | null;
-  mode?:
-    | 'focus'
-    | 'review'
-    | 'questions'
-    | 'simulado'
-    | 'planning'
-    | 'recovery';
+  mode?: BlockMode;
   type?: 'new' | 'review' | 'practice';
-  status?: 'pending' | 'in_progress' | 'completed' | 'skipped' | 'rescheduled';
+  status?: BlockStatus;
   originBlockId?: string | null;
   isRecoveryInsertion?: boolean;
   isWeeklyRecoveryBlock?: boolean;
@@ -114,20 +112,77 @@ export interface AdaptiveCompletionMetrics {
 
 const DEFAULT_TIME_SLOTS = ['08:00', '10:00', '14:00', '16:00', '18:00', '20:00'];
 
+const PRODUCT_COPY = {
+  recoverMissedBlocks: (count: number): AdaptiveSuggestion => ({
+    type: 'recover_missed_blocks',
+    title: count >= 3 ? 'Atrasos redistribuídos no plano' : 'Blocos atrasados redistribuídos',
+    description:
+      'Blocos atrasados foram redistribuídos para manter seu ritmo.',
+    impact: count >= 3 ? 'high' : 'medium',
+  }),
+
+  reduceLoad: (phase: UserPhase): AdaptiveSuggestion => ({
+    type: 'reduce_load',
+    title:
+      phase === 'fatigue_risk'
+        ? 'Carga reduzida para proteger constância'
+        : 'Carga futura ajustada com inteligência',
+    description:
+      phase === 'fatigue_risk'
+        ? 'O sistema encurtou os próximos blocos para reduzir fadiga e aumentar a chance de execução consistente.'
+        : 'Os próximos blocos foram ajustados para manter o cronograma sustentável e mais fácil de seguir.',
+    impact: phase === 'fatigue_risk' ? 'high' : 'medium',
+  }),
+
+  insertReview: (priority?: number): AdaptiveSuggestion => ({
+    type: 'insert_review',
+    title: 'Revisão espaçada priorizada',
+    description:
+      'Bloco curto de revisão inserido para melhorar retenção.',
+    impact: priority === 5 ? 'high' : 'medium',
+  }),
+
+  rebalanceSubject: (subject: string, phase: UserPhase): AdaptiveSuggestion => ({
+    type: 'rebalance_subject',
+    title: `Mais foco em ${subject}`,
+    description:
+      phase === 'sprint_to_exam'
+        ? 'O plano aumentou o reforço e os blocos de questões na matéria que mais precisa de resposta agora.'
+        : 'O cronograma ampliou espaço para a matéria com pior sinal recente de desempenho.',
+    impact: 'medium',
+  }),
+
+  protectConsistency: (): AdaptiveSuggestion => ({
+    type: 'protect_consistency',
+    title: 'Estrutura preservada',
+    description:
+      'O sistema manteve o plano atual para evitar atrito desnecessário e sustentar seu bom ritmo.',
+    impact: 'low',
+  }),
+
+  sprintBelowMinimum: (): AdaptiveSuggestion => ({
+    type: 'protect_consistency',
+    title: 'Ritmo abaixo do mínimo necessário',
+    description:
+      'Seu progresso atual está abaixo da evolução mínima esperada até a prova. Vale priorizar execução e revisão nos próximos dias.',
+    impact: 'high',
+  }),
+} as const;
+
 const cloneSchedule = (schedule: ScheduleDay[]): ScheduleDay[] =>
   schedule.map((day) => ({
     ...day,
     blocks: day.blocks.map((block) => ({ ...block })),
   }));
 
-const normalizeSubjectName = (value: string): string =>
-  value.trim().toLowerCase();
+const normalizeSubjectName = (value: string): string => value.trim().toLowerCase();
 
 const getDayMetrics = (day: ScheduleDay): ScheduleDay => {
   const plannedLoadMinutes = day.blocks.reduce(
     (acc, block) => acc + Math.max(0, Math.round(block.duration || 0)),
     0
   );
+
   const completedLoadMinutes = day.blocks
     .filter((block) => block.completed)
     .reduce((acc, block) => acc + Math.max(0, Math.round(block.duration || 0)), 0);
@@ -406,7 +461,8 @@ const recoverMissedBlocks = (
       completed: false,
       status: 'pending',
       scheduledDate: preferredRecoveryDay.date,
-      plannedStartTime: block.plannedStartTime ?? getNextBlockTime(preferredRecoveryDay.blocks),
+      plannedStartTime:
+        block.plannedStartTime ?? getNextBlockTime(preferredRecoveryDay.blocks),
       originBlockId: block.originBlockId ?? block.id,
       isRecoveryInsertion: true,
     });
@@ -446,7 +502,7 @@ const insertReviewBlock = (
 
   targetDay.blocks.unshift({
     id: reviewBlockId,
-    subject: `RevisÃ£o - ${reviewItem.subject}`,
+    subject: `Revisão - ${reviewItem.subject}`,
     duration: reviewItem.stage === 'reinforcement' ? 25 : 30,
     completed: false,
     difficulty: 1,
@@ -512,7 +568,7 @@ const rebalanceTowardWeakSubject = (
     return { schedule: applyDayMetrics(next), actions: 0 };
   }
 
-  const nextMode = phase === 'sprint_to_exam' ? 'questions' : 'focus';
+  const nextMode: BlockMode = phase === 'sprint_to_exam' ? 'questions' : 'focus';
 
   firstFutureDay.blocks.push({
     ...donorBlock,
@@ -525,7 +581,8 @@ const rebalanceTowardWeakSubject = (
     completed: false,
     difficulty: donorBlock.difficulty ?? 2,
     scheduledDate: firstFutureDay.date,
-    plannedStartTime: donorBlock.plannedStartTime ?? getNextBlockTime(firstFutureDay.blocks),
+    plannedStartTime:
+      donorBlock.plannedStartTime ?? getNextBlockTime(firstFutureDay.blocks),
     mode: nextMode,
     type: nextMode === 'questions' ? 'practice' : donorBlock.type ?? 'new',
     status: 'pending',
@@ -583,13 +640,7 @@ export function buildAdaptivePlan({
   delayedBlocksRecovered = recovered.recovered;
 
   if (delayedBlocksRecovered > 0) {
-    suggestions.push({
-      type: 'recover_missed_blocks',
-      title: 'Blocos atrasados absorvidos',
-      description:
-        'O plano redistribuiu blocos perdidos nos prÃ³ximos dias para proteger a continuidade.',
-      impact: delayedBlocksRecovered >= 3 ? 'high' : 'medium',
-    });
+    suggestions.push(PRODUCT_COPY.recoverMissedBlocks(delayedBlocksRecovered));
   }
 
   if (shouldReduceLoad(userPhase, analysis, studyLogs)) {
@@ -599,15 +650,7 @@ export function buildAdaptivePlan({
     loadReducedBlocks = reduced.affectedBlocks;
 
     if (loadReducedBlocks > 0) {
-      suggestions.push({
-        type: 'reduce_load',
-        title: 'Carga futura ajustada',
-        description:
-          userPhase === 'fatigue_risk'
-            ? 'Os blocos futuros foram encurtados para proteger consistÃªncia e reduzir fadiga.'
-            : 'A duraÃ§Ã£o dos prÃ³ximos blocos foi ajustada para manter o plano sustentÃ¡vel.',
-        impact: userPhase === 'fatigue_risk' ? 'high' : 'medium',
-      });
+      suggestions.push(PRODUCT_COPY.reduceLoad(userPhase));
     }
   }
 
@@ -618,7 +661,7 @@ export function buildAdaptivePlan({
       priorityReview ?? {
         id: `synthetic-review-${normalizeSubjectName(weakestSubject ?? 'review')}`,
         sourceBlockId: weakestSubject ?? 'review',
-        subject: weakestSubject ?? 'RevisÃ£o estratÃ©gica',
+        subject: weakestSubject ?? 'Revisão estratégica',
         stage: 'reinforcement' as const,
         priority: 4,
       };
@@ -628,13 +671,7 @@ export function buildAdaptivePlan({
     reviewBlocksInserted = review.inserted;
 
     if (reviewBlocksInserted > 0) {
-      suggestions.push({
-        type: 'insert_review',
-        title: 'RevisÃ£o espaÃ§ada priorizada',
-        description:
-          'O cronograma reservou um bloco curto de revisÃ£o para reforÃ§ar retenÃ§Ã£o e reduzir esquecimento.',
-        impact: priorityReview?.priority === 5 ? 'high' : 'medium',
-      });
+      suggestions.push(PRODUCT_COPY.insertReview(priorityReview?.priority));
     }
   }
 
@@ -647,15 +684,7 @@ export function buildAdaptivePlan({
   rebalanceActions = rebalanced.actions;
 
   if (rebalanceActions > 0 && weakestSubject) {
-    suggestions.push({
-      type: 'rebalance_subject',
-      title: `Mais foco em ${weakestSubject}`,
-      description:
-        userPhase === 'sprint_to_exam'
-          ? 'O cronograma aumentou blocos de questÃµes e reforÃ§o na matÃ©ria mais sensÃ­vel.'
-          : 'O cronograma ampliou espaÃ§o para a matÃ©ria com pior sinal recente de desempenho.',
-      impact: 'medium',
-    });
+    suggestions.push(PRODUCT_COPY.rebalanceSubject(weakestSubject, userPhase));
   }
 
   const actualProgress = calculateActualProgressFromDays(workingSchedule);
@@ -671,26 +700,14 @@ export function buildAdaptivePlan({
     (analysis?.consistencyScore ?? 1) >= 0.75 &&
     (analysis?.completionRate ?? 1) >= 0.75
   ) {
-    suggestions.push({
-      type: 'protect_consistency',
-      title: 'Estrutura preservada',
-      description:
-        'O sistema manteve o plano atual para evitar atrito desnecessario e sustentar o bom ritmo.',
-      impact: 'low',
-    });
+    suggestions.push(PRODUCT_COPY.protectConsistency());
   }
 
   if (
     userPhase === 'sprint_to_exam' &&
     actualProgress + 0.15 < minimumRequiredProgress
   ) {
-    suggestions.push({
-      type: 'protect_consistency',
-      title: 'Ritmo abaixo do mÃ­nimo competitivo',
-      description:
-        'O plano estÃ¡ abaixo da progressÃ£o mÃ­nima esperada para a prova. Vale priorizar revisÃ£o e execuÃ§Ã£o nos prÃ³ximos dias.',
-      impact: 'high',
-    });
+    suggestions.push(PRODUCT_COPY.sprintBelowMinimum());
   }
 
   return {
