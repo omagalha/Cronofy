@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +18,7 @@ type BlockItem = {
   duration?: string | number;
   time?: string;
   type?: string;
+  reviewNote?: string | null;
 };
 
 type ScheduleDay = {
@@ -25,6 +27,9 @@ type ScheduleDay = {
   date?: string;
   blocks?: BlockItem[];
 };
+
+type DifficultyOption = 'easy' | 'medium' | 'hard';
+type ConfidenceOption = 'high' | 'medium' | 'low';
 
 const weekDayMapPt: Record<number, string> = {
   0: 'Domingo',
@@ -57,6 +62,32 @@ function getDayLabel(day: ScheduleDay, index: number) {
   return `Dia ${index + 1}`;
 }
 
+function mapDifficultyToScore(value: DifficultyOption): number {
+  switch (value) {
+    case 'easy':
+      return 2;
+    case 'medium':
+      return 3;
+    case 'hard':
+      return 5;
+    default:
+      return 3;
+  }
+}
+
+function mapConfidenceToScore(value: ConfidenceOption): number {
+  switch (value) {
+    case 'high':
+      return 5;
+    case 'medium':
+      return 3;
+    case 'low':
+      return 1;
+    default:
+      return 3;
+  }
+}
+
 export default function ScheduleScreen() {
   const {
     schedule,
@@ -65,43 +96,46 @@ export default function ScheduleScreen() {
     completeBlockById,
     applyAdaptivePlan,
   } = useAppContext();
-  const [blockMetrics, setBlockMetrics] = useState<
-    Record<
-      string,
-      {
-        interruptionCount: string;
-        perceivedEnergyLevel: string;
-        perceivedDifficulty: string;
-        confidenceScore: string;
-      }
-    >
-  >({});
 
-  function updateMetric(
-    blockId: string,
-    field:
-      | 'interruptionCount'
-      | 'perceivedEnergyLevel'
-      | 'perceivedDifficulty'
-      | 'confidenceScore',
-    value: string
-  ) {
-    setBlockMetrics((prev) => ({
-      ...prev,
-      [blockId]: {
-        interruptionCount: prev[blockId]?.interruptionCount ?? '0',
-        perceivedEnergyLevel: prev[blockId]?.perceivedEnergyLevel ?? '3',
-        perceivedDifficulty: prev[blockId]?.perceivedDifficulty ?? '3',
-        confidenceScore: prev[blockId]?.confidenceScore ?? '3',
-        [field]: value,
-      },
-    }));
+  const [selectedBlock, setSelectedBlock] = useState<BlockItem | null>(null);
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
+
+  const [difficulty, setDifficulty] = useState<DifficultyOption>('medium');
+  const [confidence, setConfidence] = useState<ConfidenceOption>('medium');
+  const [reviewNote, setReviewNote] = useState('');
+
+  function openFeedbackModal(block: BlockItem) {
+    setSelectedBlock(block);
+    setDifficulty('medium');
+    setConfidence('medium');
+    setReviewNote(block.reviewNote ?? '');
+    setFeedbackModalVisible(true);
+  }
+
+  function closeFeedbackModal() {
+    setFeedbackModalVisible(false);
+    setSelectedBlock(null);
+    setReviewNote('');
+    setDifficulty('medium');
+    setConfidence('medium');
+  }
+
+  function handleConfirmBlock() {
+    if (!selectedBlock) return;
+
+    completeBlockById(selectedBlock.id, {
+      mode: selectedBlock.type === 'review' ? 'review' : 'focus',
+      interruptionCount: 0,
+      perceivedDifficulty: mapDifficultyToScore(difficulty),
+      confidenceScore: mapConfidenceToScore(confidence),
+      reviewNote: reviewNote.trim() || null,
+    });
+
+    closeFeedbackModal();
   }
 
   const scheduleDays = useMemo<ScheduleDay[]>(() => {
-    const source = previewAdaptiveSchedule?.length
-      ? previewAdaptiveSchedule
-      : schedule;
+    const source = previewAdaptiveSchedule?.length ? previewAdaptiveSchedule : schedule;
 
     if (Array.isArray(source)) return source as ScheduleDay[];
     if (source && Array.isArray((source as any).days)) {
@@ -224,9 +258,7 @@ export default function ScheduleScreen() {
                   <View style={styles.dayHeader}>
                     <View>
                       <Text style={styles.dayTitle}>{getDayLabel(day, index)}</Text>
-                      {!!day.date && (
-                        <Text style={styles.dayDate}>{day.date}</Text>
-                      )}
+                      {!!day.date && <Text style={styles.dayDate}>{day.date}</Text>}
                     </View>
 
                     {isToday && (
@@ -268,6 +300,14 @@ export default function ScheduleScreen() {
                               {formatDuration(block.duration)}
                               {block.type ? ` • ${block.type}` : ''}
                             </Text>
+
+                            {!!block.reviewNote && (
+                              <View style={styles.noteBadge}>
+                                <Text style={styles.noteBadgeText}>
+                                  dúvida salva para revisão
+                                </Text>
+                              </View>
+                            )}
                           </View>
 
                           {block.completed ? (
@@ -275,76 +315,12 @@ export default function ScheduleScreen() {
                               <Text style={styles.doneBadgeText}>Concluído</Text>
                             </View>
                           ) : (
-                            <View style={styles.metricArea}>
-                              <View style={styles.metricGrid}>
-                                <TextInput
-                                  style={styles.metricInput}
-                                  placeholder="Interrupções"
-                                  placeholderTextColor="#64748B"
-                                  keyboardType="numeric"
-                                  value={blockMetrics[block.id]?.interruptionCount ?? '0'}
-                                  onChangeText={(value) =>
-                                    updateMetric(block.id, 'interruptionCount', value)
-                                  }
-                                />
-                                <TextInput
-                                  style={styles.metricInput}
-                                  placeholder="Energia (1-5)"
-                                  placeholderTextColor="#64748B"
-                                  keyboardType="numeric"
-                                  value={blockMetrics[block.id]?.perceivedEnergyLevel ?? '3'}
-                                  onChangeText={(value) =>
-                                    updateMetric(block.id, 'perceivedEnergyLevel', value)
-                                  }
-                                />
-                                <TextInput
-                                  style={styles.metricInput}
-                                  placeholder="Dificuldade (1-5)"
-                                  placeholderTextColor="#64748B"
-                                  keyboardType="numeric"
-                                  value={blockMetrics[block.id]?.perceivedDifficulty ?? '3'}
-                                  onChangeText={(value) =>
-                                    updateMetric(block.id, 'perceivedDifficulty', value)
-                                  }
-                                />
-                                <TextInput
-                                  style={styles.metricInput}
-                                  placeholder="Confiança (1-5)"
-                                  placeholderTextColor="#64748B"
-                                  keyboardType="numeric"
-                                  value={blockMetrics[block.id]?.confidenceScore ?? '3'}
-                                  onChangeText={(value) =>
-                                    updateMetric(block.id, 'confidenceScore', value)
-                                  }
-                                />
-                              </View>
-                              <Pressable
-                                style={styles.completeButton}
-                                onPress={() =>
-                                  completeBlockById(block.id, {
-                                    mode: block.type === 'review' ? 'review' : 'focus',
-                                    interruptionCount: Number.parseInt(
-                                      blockMetrics[block.id]?.interruptionCount ?? '0',
-                                      10
-                                    ),
-                                    perceivedEnergyLevel: Number.parseInt(
-                                      blockMetrics[block.id]?.perceivedEnergyLevel ?? '3',
-                                      10
-                                    ),
-                                    perceivedDifficulty: Number.parseInt(
-                                      blockMetrics[block.id]?.perceivedDifficulty ?? '3',
-                                      10
-                                    ),
-                                    confidenceScore: Number.parseInt(
-                                      blockMetrics[block.id]?.confidenceScore ?? '3',
-                                      10
-                                    ),
-                                  })
-                                }
-                              >
-                                <Text style={styles.completeButtonText}>Concluir</Text>
-                              </Pressable>
-                            </View>
+                            <Pressable
+                              style={styles.completeButton}
+                              onPress={() => openFeedbackModal(block)}
+                            >
+                              <Text style={styles.completeButtonText}>Concluir</Text>
+                            </Pressable>
                           )}
                         </View>
                       ))
@@ -356,7 +332,113 @@ export default function ScheduleScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={feedbackModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeFeedbackModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalEyebrow}>FINALIZAR BLOCO</Text>
+            <Text style={styles.modalTitle}>Como foi esse bloco?</Text>
+
+            {!!selectedBlock?.subject && (
+              <Text style={styles.modalSubtitle}>
+                {selectedBlock.subject}
+                {selectedBlock.time ? ` • ${selectedBlock.time}` : ''}
+              </Text>
+            )}
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>Dificuldade</Text>
+              <View style={styles.optionRow}>
+                <OptionChip
+                  label="Foi tranquilo"
+                  active={difficulty === 'easy'}
+                  onPress={() => setDifficulty('easy')}
+                />
+                <OptionChip
+                  label="Exigiu atenção"
+                  active={difficulty === 'medium'}
+                  onPress={() => setDifficulty('medium')}
+                />
+                <OptionChip
+                  label="Pegou bastante"
+                  active={difficulty === 'hard'}
+                  onPress={() => setDifficulty('hard')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>Confiança</Text>
+              <View style={styles.optionRow}>
+                <OptionChip
+                  label="Entendi bem"
+                  active={confidence === 'high'}
+                  onPress={() => setConfidence('high')}
+                />
+                <OptionChip
+                  label="Entendi mais ou menos"
+                  active={confidence === 'medium'}
+                  onPress={() => setConfidence('medium')}
+                />
+                <OptionChip
+                  label="Ainda estou inseguro"
+                  active={confidence === 'low'}
+                  onPress={() => setConfidence('low')}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>Dúvida para revisar depois</Text>
+              <TextInput
+                style={styles.noteInput}
+                placeholder="Ex: regra de três, crase, interpretação de gráficos..."
+                placeholderTextColor="#64748B"
+                value={reviewNote}
+                onChangeText={setReviewNote}
+                multiline
+              />
+            </View>
+
+            <View style={styles.modalFooter}>
+              <Pressable style={styles.modalSecondaryButton} onPress={closeFeedbackModal}>
+                <Text style={styles.modalSecondaryButtonText}>Cancelar</Text>
+              </Pressable>
+
+              <Pressable style={styles.modalPrimaryButton} onPress={handleConfirmBlock}>
+                <Text style={styles.modalPrimaryButtonText}>Salvar e concluir</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
+  );
+}
+
+function OptionChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.optionChip, active && styles.optionChipActive]}
+    >
+      <Text style={[styles.optionChipText, active && styles.optionChipTextActive]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -570,6 +652,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  noteBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(99,102,241,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.28)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginTop: 10,
+  },
+  noteBadgeText: {
+    color: '#C7D2FE',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
   doneBadge: {
     backgroundColor: 'rgba(34,197,94,0.15)',
     paddingHorizontal: 10,
@@ -584,25 +682,9 @@ const styles = StyleSheet.create({
 
   completeButton: {
     backgroundColor: '#6366F1',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 10,
-  },
-  metricArea: {
-    width: 160,
-    gap: 8,
-  },
-  metricGrid: {
-    gap: 6,
-  },
-  metricInput: {
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    color: '#E2E8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 11,
   },
   completeButtonText: {
     color: '#FFFFFF',
@@ -628,5 +710,109 @@ const styles = StyleSheet.create({
   emptyBlockText: {
     color: '#94A3B8',
     fontStyle: 'italic',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(2,6,23,0.72)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: '#111C30',
+    borderRadius: 24,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  modalEyebrow: {
+    color: '#8FA1BC',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    marginBottom: 8,
+  },
+  modalTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '700',
+  },
+  modalSubtitle: {
+    color: '#94A3B8',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  modalSection: {
+    marginTop: 18,
+  },
+  modalSectionTitle: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  optionRow: {
+    gap: 10,
+  },
+  optionChip: {
+    backgroundColor: '#0B1324',
+    borderWidth: 1,
+    borderColor: '#24324A',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  optionChipActive: {
+    backgroundColor: 'rgba(99,102,241,0.16)',
+    borderColor: '#6366F1',
+  },
+  optionChipText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  optionChipTextActive: {
+    color: '#FFFFFF',
+  },
+  noteInput: {
+    minHeight: 92,
+    backgroundColor: '#0B1324',
+    borderWidth: 1,
+    borderColor: '#24324A',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  modalSecondaryButton: {
+    flex: 1,
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalSecondaryButtonText: {
+    color: '#CBD5E1',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalPrimaryButton: {
+    flex: 1.3,
+    backgroundColor: '#6366F1',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalPrimaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

@@ -8,12 +8,12 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { IReviewItem } from '../apps/shared/types/review';
 import {
   AdaptivePlanningEngine,
   AdaptivePlanningResult,
   buildAdaptivePlan,
 } from '../utils/adaptivePlanningEngine';
-import { IReviewItem } from '../apps/shared/types/review';
 import {
   buildPersistedSchedule,
   completeBlock,
@@ -46,6 +46,7 @@ type ScheduleContextData = {
       perceivedEnergyLevel?: number | null;
       perceivedDifficulty?: number | null;
       confidenceScore?: number | null;
+      reviewNote?: string | null;
       completedAt?: string;
     }
   ) => void;
@@ -370,6 +371,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
         perceivedEnergyLevel?: number | null;
         perceivedDifficulty?: number | null;
         confidenceScore?: number | null;
+        reviewNote?: string | null;
         completedAt?: string;
       }
     ) => {
@@ -399,6 +401,9 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
           subject: completedBlock.subject,
           duration: parseDurationToMinutes(completedBlock.duration),
           completed: true,
+          difficulty: completedBlock.perceivedDifficulty ?? undefined,
+          confidenceScore: completedBlock.confidenceScore ?? null,
+          reviewNote: completedBlock.reviewNote ?? null,
         });
 
         if (reviewItems.length) {

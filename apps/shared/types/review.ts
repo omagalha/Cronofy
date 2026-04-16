@@ -1,5 +1,11 @@
 export type ReviewStatus = 'pending' | 'scheduled' | 'completed' | 'expired';
 
+export type ReviewReason =
+  | 'scheduled_review'
+  | 'high_difficulty'
+  | 'low_confidence'
+  | 'manual_doubt';
+
 export interface IReviewItem {
   id: string;
   blockId: string;
@@ -9,4 +15,7 @@ export interface IReviewItem {
   status: ReviewStatus;
   confidenceScore?: number | null;
   completedAt?: string | null;
+
+  reviewNote?: string | null;
+  reviewReason?: ReviewReason;
 }

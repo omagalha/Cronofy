@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  SafeAreaView,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,11 +24,11 @@ const METRICS = [
 
 export default function EntryScreen() {
   const handleStart = () => {
-    router.replace('/setup');
+    router.push('/auth/signup');
   };
 
   const handleLogin = () => {
-    router.push('/auth/signin');
+    router.push('/login');
   };
 
   return (
@@ -42,9 +43,12 @@ export default function EntryScreen() {
         <View style={styles.heroCard}>
           <View style={styles.brandRow}>
             <View style={styles.logoBadge}>
-              <Text style={styles.logoBadgeText}>C</Text>
+              <Image
+                source={require('../../assets/images/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
-
             <View style={styles.brandTextWrap}>
               <Text style={styles.brandTitle}>Cronofy</Text>
               <Text style={styles.brandSubtitle}>
@@ -199,6 +203,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
+  
+  logoImage: {
+  width: 30,
+  height: 30,
+},
+
   logoBadgeText: {
     color: '#FFFFFF',
     fontSize: 22,

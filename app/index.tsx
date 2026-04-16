@@ -4,14 +4,20 @@ import { useAppContext } from '../context/AppContext';
 
 export default function Index() {
   const {
+    isAuthLoaded,
+    isAuthenticated,
     setupData,
     isSetupLoaded,
     persistedSchedule,
     isScheduleLoaded,
   } = useAppContext();
 
-  if (!isSetupLoaded || !isScheduleLoaded) {
+  if (!isAuthLoaded || !isSetupLoaded || !isScheduleLoaded) {
     return null;
+  }
+
+  if (!isAuthenticated) {
+    return <Redirect href="/auth/login" />;
   }
 
   const hasMinimumSetup =

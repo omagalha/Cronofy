@@ -18,8 +18,9 @@ export interface StudyBlock {
   scheduledDate?: string;
   plannedStartTime?: string;
   plannedEndTime?: string;
+  confidenceScore?: number | null;
+  reviewNote?: string | null;
 }
-
 export interface ScheduleDay {
   date: string;
   weekday: Weekday;
@@ -522,7 +523,20 @@ export class AdaptivePlanningEngine {
 
     const now = new Date();
     const dueDate = new Date(now);
-    dueDate.setDate(dueDate.getDate() + 2);
+
+    const hasManualDoubt = Boolean(block.reviewNote?.trim());
+    const hasLowConfidence =
+      typeof block.confidenceScore === 'number' && block.confidenceScore <= 2;
+    const hasHighDifficulty =
+      typeof block.difficulty === 'number' && block.difficulty >= 4;
+
+    if (hasManualDoubt) {
+      dueDate.setDate(dueDate.getDate() + 1);
+    } else if (hasLowConfidence || hasHighDifficulty) {
+      dueDate.setDate(dueDate.getDate() + 2);
+    } else {
+      dueDate.setDate(dueDate.getDate() + 7);
+    }
 
     return [
       {
@@ -532,12 +546,19 @@ export class AdaptivePlanningEngine {
         createdAt: now.toISOString(),
         dueDate: dueDate.toISOString(),
         status: 'pending',
-        confidenceScore: null,
+        confidenceScore: block.confidenceScore ?? null,
         completedAt: null,
+        reviewNote: block.reviewNote ?? null,
+        reviewReason: hasManualDoubt
+          ? 'manual_doubt'
+          : hasLowConfidence
+          ? 'low_confidence'
+          : hasHighDifficulty
+          ? 'high_difficulty'
+          : 'scheduled_review',
       },
     ];
   }
-
   updateReviewItem(item: IReviewItem): IReviewItem {
     return {
       ...item,

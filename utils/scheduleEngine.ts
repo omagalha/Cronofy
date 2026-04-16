@@ -26,6 +26,7 @@ export type StudyBlock = {
   perceivedEnergyLevel?: number | null;
   perceivedDifficulty?: number | null;
   confidenceScore?: number | null;
+  reviewNote?: string | null;
 };
 
 export type ScheduleDay = {
@@ -689,6 +690,7 @@ export const completeBlock = (
       | 'perceivedEnergyLevel'
       | 'perceivedDifficulty'
       | 'confidenceScore'
+      | 'reviewNote'
       | 'completedAt'
     >
   >
@@ -697,8 +699,8 @@ export const completeBlock = (
   let completedSessionKey: string | null = null;
   const completedAt = new Date().toISOString();
 
-  const updatedDays = schedule.days.map((day) => {
-    const updatedBlocks = day.blocks.map((block) => {
+  const updatedDays: ScheduleDay[] = schedule.days.map((day) => {
+    const updatedBlocks: StudyBlock[] = day.blocks.map((block) => {
       if (block.id !== blockId) return block;
       if (block.completed) return block;
 
@@ -715,6 +717,7 @@ export const completeBlock = (
         perceivedDifficulty:
           payload?.perceivedDifficulty ?? block.perceivedDifficulty,
         confidenceScore: payload?.confidenceScore ?? block.confidenceScore,
+        reviewNote: payload?.reviewNote ?? block.reviewNote ?? null,
         completedAt: payload?.completedAt ?? completedAt,
       };
     });
