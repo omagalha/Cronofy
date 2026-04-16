@@ -1,13 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import {
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import SetupShell from '../../components/setup/SetupShell';
 import { useAppContext } from '../../context/AppContext';
 
 const weekDays = [
@@ -20,11 +14,34 @@ const weekDays = [
   'Domingo',
 ];
 
+function getDaysMessage(count: number): string {
+  if (count === 0) {
+    return 'Selecione os dias em que você realmente consegue estudar.';
+  }
+
+  if (count === 1) {
+    return '1 dia selecionado. Seu plano ficará mais concentrado.';
+  }
+
+  if (count <= 3) {
+    return `${count} dias selecionados. Bom para uma rotina objetiva e sustentável.`;
+  }
+
+  if (count <= 5) {
+    return `${count} dias selecionados. Ótimo equilíbrio entre constância e volume.`;
+  }
+
+  return `${count} dias selecionados. Seu plano terá bastante flexibilidade.`;
+}
+
 export default function DiasScreen() {
   const { setupData, toggleAvailableDay, clearAvailableDays } = useAppContext();
   const { flow } = useLocalSearchParams<{ flow?: string }>();
 
-  function handleSaveDays() {
+  const selectedCount = setupData.diasDisponiveis.length;
+  const helperMessage = getDaysMessage(selectedCount);
+
+  function handleContinue() {
     if (flow === 'wizard') {
       router.push('/setup/materias?flow=wizard');
       return;
@@ -34,113 +51,115 @@ export default function DiasScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Dias disponíveis</Text>
-        <Text style={styles.subtitle}>
-          Escolha os dias em que você pode estudar.
-        </Text>
+    <SetupShell
+      step={6}
+      totalSteps={7}
+      title="Quais dias você tem disponíveis?"
+      subtitle="Escolha os dias em que o plano pode distribuir seus blocos de estudo."
+      primaryLabel="Continuar"
+      onPrimaryPress={handleContinue}
+      primaryDisabled={selectedCount === 0}
+      secondaryLabel="Limpar seleção"
+      onSecondaryPress={clearAvailableDays}
+      footerHint={helperMessage}
+    >
+      <View style={styles.counterCard}>
+        <Text style={styles.counterLabel}>Dias selecionados</Text>
+        <Text style={styles.counterValue}>{selectedCount}</Text>
+      </View>
 
-        <View style={styles.grid}>
-          {weekDays.map((day) => {
-            const selected = setupData.diasDisponiveis.includes(day);
+      <View style={styles.grid}>
+        {weekDays.map((day) => {
+          const selected = setupData.diasDisponiveis.includes(day);
 
-            return (
-              <Pressable
-                key={day}
-                style={[styles.dayButton, selected && styles.dayButtonSelected]}
-                onPress={() => toggleAvailableDay(day)}
+          return (
+            <Pressable
+              key={day}
+              style={({ pressed }) => [
+                styles.dayCard,
+                selected && styles.dayCardSelected,
+                pressed && styles.dayCardPressed,
+              ]}
+              onPress={() => toggleAvailableDay(day)}
+            >
+              <Text
+                style={[
+                  styles.dayTitle,
+                  selected && styles.dayTitleSelected,
+                ]}
               >
-                <Text
-                  style={[styles.dayButtonText, selected && styles.dayButtonTextSelected]}
-                >
-                  {day}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                {day}
+              </Text>
 
-        <Pressable
-          style={styles.secondaryButton}
-          onPress={clearAvailableDays}
-        >
-          <Text style={styles.secondaryButtonText}>Limpar seleção</Text>
-        </Pressable>
-
-        <Pressable style={styles.primaryButton} onPress={handleSaveDays}>
-          <Text style={styles.primaryButtonText}>Salvar dias</Text>
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
+              <Text
+                style={[
+                  styles.daySubtitle,
+                  selected && styles.daySubtitleSelected,
+                ]}
+              >
+                {selected ? 'Selecionado' : 'Toque para ativar'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </SetupShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F9FF',
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 32,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1565C0',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#475569',
-    marginBottom: 24,
-  },
-  grid: {
-    gap: 12,
-    marginBottom: 24,
-  },
-  dayButton: {
+  counterCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#DCEBFF',
-    borderRadius: 14,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+  },
+  counterLabel: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  counterValue: {
+    color: '#0F172A',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  grid: {
+    gap: 12,
+  },
+  dayCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCEBFF',
+    borderRadius: 18,
     paddingVertical: 16,
     paddingHorizontal: 16,
   },
-  dayButtonSelected: {
+  dayCardSelected: {
     backgroundColor: '#EAF3FF',
     borderColor: '#1565C0',
   },
-  dayButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  dayCardPressed: {
+    opacity: 0.9,
+  },
+  dayTitle: {
     color: '#0F172A',
-  },
-  dayButtonTextSelected: {
-    color: '#1565C0',
-  },
-  primaryButton: {
-    backgroundColor: '#1565C0',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    marginBottom: 4,
   },
-  secondaryButton: {
-    backgroundColor: '#E0ECFF',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  secondaryButtonText: {
+  dayTitleSelected: {
     color: '#1565C0',
-    fontSize: 15,
+  },
+  daySubtitle: {
+    color: '#64748B',
+    fontSize: 13,
     fontWeight: '600',
+  },
+  daySubtitleSelected: {
+    color: '#1E3A8A',
   },
 });

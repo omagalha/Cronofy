@@ -1,9 +1,27 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import SetupShell from '../../components/setup/SetupShell';
 import { useAppContext } from '../../context/AppContext';
 
-const options = ['Aprovação rápida', 'Base forte', 'Revisão', 'Constância diária'];
+const options = [
+  {
+    title: 'Aprovação rápida',
+    description: 'Mais ritmo, avanço constante e estudo mais objetivo.',
+  },
+  {
+    title: 'Base forte',
+    description: 'Mais profundidade, compreensão e construção sólida.',
+  },
+  {
+    title: 'Revisão',
+    description: 'Mais reforço de conteúdo e retenção do que já foi estudado.',
+  },
+  {
+    title: 'Constância diária',
+    description: 'Carga mais sustentável para manter rotina sem sobrecarga.',
+  },
+];
 
 export default function FocoScreen() {
   const { setupData, updateSetupField } = useAppContext();
@@ -21,88 +39,90 @@ export default function FocoScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Qual seu foco?</Text>
-        <Text style={styles.subtitle}>
-          Escolha o objetivo principal da sua preparação.
-        </Text>
-
+    <SetupShell
+      step={4}
+      totalSteps={7}
+      title="Qual é o seu foco principal?"
+      subtitle="O Cronofy usa essa escolha para ajustar a estratégia do cronograma."
+      primaryLabel="Escolha uma opção"
+      primaryDisabled
+      secondaryLabel="Voltar"
+      onSecondaryPress={() => router.back()}
+      footerHint="Essa escolha muda a forma como o plano distribui sua energia."
+    >
+      <View style={styles.optionsWrap}>
         {options.map((option) => {
-          const selected = setupData.foco === option;
+          const selected = setupData.foco === option.title;
 
           return (
             <Pressable
-              key={option}
-              style={[styles.optionCard, selected && styles.optionCardSelected]}
-              onPress={() => handleSelect(option)}
+              key={option.title}
+              style={({ pressed }) => [
+                styles.optionCard,
+                selected && styles.optionCardSelected,
+                pressed && styles.optionCardPressed,
+              ]}
+              onPress={() => handleSelect(option.title)}
             >
-              <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                {option}
+              <Text
+                style={[
+                  styles.optionTitle,
+                  selected && styles.optionTitleSelected,
+                ]}
+              >
+                {option.title}
+              </Text>
+
+              <Text
+                style={[
+                  styles.optionDescription,
+                  selected && styles.optionDescriptionSelected,
+                ]}
+              >
+                {option.description}
               </Text>
             </Pressable>
           );
         })}
-
-        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
-          <Text style={styles.secondaryButtonText}>Voltar</Text>
-        </Pressable>
       </View>
-    </SafeAreaView>
+    </SetupShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F9FF',
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1565C0',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#475569',
-    marginBottom: 24,
+  optionsWrap: {
+    gap: 12,
   },
   optionCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#DCEBFF',
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 18,
-    marginBottom: 12,
   },
   optionCardSelected: {
     backgroundColor: '#EAF3FF',
     borderColor: '#1565C0',
   },
-  optionText: {
-    fontSize: 16,
-    fontWeight: '600',
+  optionCardPressed: {
+    opacity: 0.9,
+  },
+  optionTitle: {
+    fontSize: 17,
+    fontWeight: '800',
     color: '#0F172A',
+    marginBottom: 8,
   },
-  optionTextSelected: {
+  optionTitleSelected: {
     color: '#1565C0',
   },
-  secondaryButton: {
-    backgroundColor: '#E0ECFF',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 12,
+  optionDescription: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#475569',
+    fontWeight: '500',
   },
-  secondaryButtonText: {
-    color: '#1565C0',
-    fontSize: 15,
-    fontWeight: '600',
+  optionDescriptionSelected: {
+    color: '#1E3A8A',
   },
 });

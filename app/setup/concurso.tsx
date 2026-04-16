@@ -4,32 +4,49 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
-  TextInput
+  TextInput,
+  View,
 } from 'react-native';
+import SetupShell from '../../components/setup/SetupShell';
 import { useAppContext } from '../../context/AppContext';
+
+const QUICK_OPTIONS = [
+  'Banco do Brasil',
+  'Caixa',
+  'INSS',
+  'TJ',
+  'PRF',
+  'PF',
+];
 
 export default function ConcursoScreen() {
   const { setupData, updateSetupField } = useAppContext();
   const [value, setValue] = useState(setupData.concurso);
 
-  function handleSave() {
+  function handleContinue() {
     updateSetupField('concurso', value.trim());
     router.push('/setup/data-prova?flow=wizard');
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SetupShell
+      step={1}
+      totalSteps={7}
+      title="Qual concurso você está mirando?"
+      subtitle="Isso ajuda o Cronofy a começar seu plano com mais contexto e organização."
+      primaryLabel="Continuar"
+      onPrimaryPress={handleContinue}
+      secondaryLabel="Voltar"
+      onSecondaryPress={() => router.back()}
+      primaryDisabled={!value.trim()}
+      footerHint="Você pode ajustar isso depois sem perder sua evolução."
+    >
       <KeyboardAvoidingView
-        style={styles.content}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Text style={styles.title}>Qual concurso?</Text>
-        <Text style={styles.subtitle}>
-          Informe o concurso que você está estudando.
-        </Text>
+        <Text style={styles.sectionTitle}>Digite o concurso</Text>
 
         <TextInput
           value={value}
@@ -37,73 +54,90 @@ export default function ConcursoScreen() {
           placeholder="Ex: INSS, Caixa, TJ, PRF..."
           placeholderTextColor="#94A3B8"
           style={styles.input}
+          autoCorrect={false}
         />
 
-        <Pressable style={styles.primaryButton} onPress={handleSave}>
-          <Text style={styles.primaryButtonText}>Salvar</Text>
-        </Pressable>
+        <View style={styles.spacer} />
 
-        <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
-          <Text style={styles.secondaryButtonText}>Voltar</Text>
-        </Pressable>
+        <Text style={styles.sectionTitle}>Sugestões rápidas</Text>
+
+        <View style={styles.chipsWrap}>
+          {QUICK_OPTIONS.map((option) => {
+            const selected = value.trim() === option;
+
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setValue(option)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  selected && styles.chipSelected,
+                  pressed && styles.chipPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    selected && styles.chipTextSelected,
+                  ]}
+                >
+                  {option}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SetupShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F5F9FF',
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1565C0',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#475569',
-    marginBottom: 24,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 12,
   },
   input: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#DCEBFF',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
     fontSize: 15,
     color: '#0F172A',
-    marginBottom: 16,
   },
-  primaryButton: {
-    backgroundColor: '#1565C0',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 12,
+  spacer: {
+    height: 22,
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  chip: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCEBFF',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  chipSelected: {
+    backgroundColor: '#EAF3FF',
+    borderColor: '#1565C0',
+  },
+  chipText: {
+    color: '#0F172A',
+    fontSize: 14,
     fontWeight: '700',
   },
-  secondaryButton: {
-    backgroundColor: '#E0ECFF',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
+  chipTextSelected: {
     color: '#1565C0',
-    fontSize: 15,
-    fontWeight: '600',
+  },
+  chipPressed: {
+    opacity: 0.88,
   },
 });

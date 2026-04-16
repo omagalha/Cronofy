@@ -1,5 +1,7 @@
 import { router } from 'expo-router';
+import React from 'react';
 import {
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,32 +9,16 @@ import {
   View,
 } from 'react-native';
 
-const PRO_FEATURES = [
-  {
-    icon: '🧩',
-    title: 'Widgets Pro',
-    description: 'Organize sua rotina com widgets úteis na tela inicial.',
-  },
-  {
-    icon: '🧠',
-    title: 'Cronograma Inteligente',
-    description: 'Tenha uma distribuição de matérias mais estratégica.',
-  },
-  {
-    icon: '📊',
-    title: 'Insights de Progresso',
-    description: 'Acompanhe sua evolução com métricas claras.',
-  },
-  {
-    icon: '🔥',
-    title: 'Revisão Inteligente',
-    description: 'Receba revisões automáticas com base no seu desempenho.',
-  },
-  {
-    icon: '⚡',
-    title: 'Experiência Avançada',
-    description: 'Estude com mais controle e produtividade.',
-  },
+const VALUE_POINTS = [
+  'Plano personalizado em poucos passos',
+  'Execução diária por blocos',
+  'Insights e adaptação com IA',
+];
+
+const METRICS = [
+  { label: 'Próximo bloco', value: 'Matemática · 08:00' },
+  { label: 'Consistência', value: '82%' },
+  { label: 'Prova', value: 'Faltam 73 dias' },
 ];
 
 export default function EntryScreen() {
@@ -45,199 +31,394 @@ export default function EntryScreen() {
   };
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Cronofy</Text>
-          <Text style={styles.subtitle}>
-            Seu plano de estudos inteligente com recursos avançados para quem
-            quer estudar melhor.
-          </Text>
-        </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.backgroundGlowTop} />
+        <View style={styles.backgroundGlowBottom} />
 
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleStart}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.primaryButtonText}>Começar</Text>
-          </TouchableOpacity>
+        <View style={styles.heroCard}>
+          <View style={styles.brandRow}>
+            <View style={styles.logoBadge}>
+              <Text style={styles.logoBadgeText}>C</Text>
+            </View>
 
-          <Text style={styles.freeHint}>Comece gratuitamente</Text>
+            <View style={styles.brandTextWrap}>
+              <Text style={styles.brandTitle}>Cronofy</Text>
+              <Text style={styles.brandSubtitle}>
+                Seu plano de estudos inteligente
+              </Text>
+            </View>
+          </View>
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleLogin}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryButtonText}>Já tem conta? Entrar</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.headlineBlock}>
+            <Text style={styles.eyebrow}>FOCO • ROTINA • EVOLUÇÃO</Text>
 
-        <View style={styles.proSection}>
-          <Text style={styles.proBadge}>PRO</Text>
+            <Text style={styles.headline}>
+              Seu cronograma de estudos, pronto em minutos.
+            </Text>
 
-          <Text style={styles.proDescription}>
-            Desbloqueie recursos avançados para personalizar sua rotina,
-            visualizar seu progresso e estudar com mais estratégia.
-          </Text>
+            <Text style={styles.description}>
+              Organize sua preparação para concursos com um plano claro,
+              execução diária e ajustes inteligentes conforme seu ritmo.
+            </Text>
+          </View>
 
-          <View style={styles.grid}>
-            {PRO_FEATURES.map((feature, index) => {
-              const isLastOdd =
-                PRO_FEATURES.length % 2 !== 0 &&
-                index === PRO_FEATURES.length - 1;
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <View>
+                <Text style={styles.previewLabel}>Hoje</Text>
+                <Text style={styles.previewTitle}>Plano do dia</Text>
+              </View>
 
-              return (
-                <View
-                  key={feature.title}
-                  style={[styles.featureCard, isLastOdd && styles.lastOddCard]}
-                >
-                  <Text style={styles.icon}>{feature.icon}</Text>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureText}>{feature.description}</Text>
+              <View style={styles.aiPill}>
+                <Text style={styles.aiPillText}>IA ativa</Text>
+              </View>
+            </View>
+
+            <View style={styles.nextBlockCard}>
+              <Text style={styles.nextBlockEyebrow}>Próximo bloco</Text>
+              <Text style={styles.nextBlockTitle}>Matemática</Text>
+              <Text style={styles.nextBlockMeta}>08:00 • 45 min • foco total</Text>
+            </View>
+
+            <View style={styles.metricsRow}>
+              {METRICS.map((item) => (
+                <View key={item.label} style={styles.metricCard}>
+                  <Text style={styles.metricLabel}>{item.label}</Text>
+                  <Text style={styles.metricValue}>{item.value}</Text>
                 </View>
-              );
-            })}
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleStart}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.primaryButtonText}>Começar grátis</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleLogin}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.secondaryButtonText}>Já tenho conta</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.helperText}>
+              Sem travar no começo. Monte seu plano e ajuste depois.
+            </Text>
           </View>
         </View>
-      </View>
-    </ScrollView>
+
+        <View style={styles.benefitsSection}>
+          <Text style={styles.benefitsTitle}>Por que o Cronofy?</Text>
+
+          <View style={styles.valueList}>
+            {VALUE_POINTS.map((point) => (
+              <View key={point} style={styles.valueItem}>
+                <View style={styles.valueDot} />
+                <Text style={styles.valueText}>{point}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.bottomCard}>
+            <Text style={styles.bottomCardTitle}>Comece simples. Evolua com IA.</Text>
+            <Text style={styles.bottomCardText}>
+              Primeiro o app te entrega valor rápido. Depois ele aprende seu
+              ritmo, protege sua consistência e melhora sua rotina.
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#071120',
+  },
   container: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1565C0',
     paddingHorizontal: 20,
-    paddingVertical: 28,
+    paddingTop: 18,
+    paddingBottom: 28,
+    backgroundColor: '#071120',
   },
-  card: {
-    width: '100%',
-    borderRadius: 24,
-    padding: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+  backgroundGlowTop: {
+    position: 'absolute',
+    top: -80,
+    right: -40,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(59,130,246,0.16)',
+  },
+  backgroundGlowBottom: {
+    position: 'absolute',
+    bottom: 100,
+    left: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(21,101,192,0.14)',
+  },
+  heroCard: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 30,
+    padding: 20,
+    overflow: 'hidden',
   },
-  header: {
+  brandRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 22,
   },
-  title: {
-    fontSize: 30,
-    fontWeight: '800',
+  logoBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: '#1565C0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#1565C0',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  logoBadgeText: {
     color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  brandTextWrap: {
+    flex: 1,
+  },
+  brandTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '800',
     letterSpacing: 0.2,
   },
-  subtitle: {
-    marginTop: 8,
-    maxWidth: 300,
-    textAlign: 'center',
+  brandSubtitle: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  headlineBlock: {
+    marginBottom: 24,
+  },
+  eyebrow: {
+    color: '#7DB7FF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    marginBottom: 12,
+  },
+  headline: {
+    color: '#FFFFFF',
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    marginBottom: 12,
+  },
+  description: {
+    color: 'rgba(255,255,255,0.76)',
+    fontSize: 15,
+    lineHeight: 23,
+    maxWidth: 340,
+  },
+  previewCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 22,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  previewLabel: {
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  previewTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  aiPill: {
+    backgroundColor: 'rgba(125,183,255,0.12)',
+    borderColor: 'rgba(125,183,255,0.24)',
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  aiPillText: {
+    color: '#B7D7FF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  nextBlockCard: {
+    backgroundColor: '#0F1D31',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  nextBlockEyebrow: {
+    color: '#7DB7FF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  nextBlockTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  nextBlockMeta: {
+    color: 'rgba(255,255,255,0.66)',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  metricsRow: {
+    gap: 10,
+  },
+  metricCard: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  metricLabel: {
+    color: 'rgba(255,255,255,0.56)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  metricValue: {
+    color: '#FFFFFF',
     fontSize: 14,
-    lineHeight: 21,
-    color: 'rgba(255,255,255,0.84)',
+    fontWeight: '700',
+    lineHeight: 20,
   },
   actions: {
-    alignItems: 'center',
-    marginBottom: 26,
+    marginTop: 2,
   },
   primaryButton: {
-    width: '100%',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 15,
-    borderRadius: 14,
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    marginBottom: 12,
   },
   primaryButtonText: {
-    color: '#1565C0',
+    color: '#0B1830',
+    fontSize: 16,
     fontWeight: '800',
-    fontSize: 15,
-  },
-  freeHint: {
-    marginTop: 10,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.72)',
+    letterSpacing: 0.1,
   },
   secondaryButton: {
-    marginTop: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 15,
+    alignItems: 'center',
   },
   secondaryButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  proSection: {
-    paddingTop: 22,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
-  },
-  proBadge: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 15,
     fontWeight: '700',
-    letterSpacing: 2,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    overflow: 'hidden',
-    marginBottom: 12,
   },
-  proDescription: {
-    alignSelf: 'center',
-    maxWidth: 310,
+  helperText: {
+    marginTop: 12,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: 18,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  featureCard: {
-    width: '48%',
-    minHeight: 128,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    padding: 14,
-    borderRadius: 18,
-    marginBottom: 12,
-  },
-  lastOddCard: {
-    width: '68%',
-    alignSelf: 'center',
-  },
-  icon: {
-    fontSize: 18,
-  },
-  featureTitle: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-    marginBottom: 6,
-  },
-  featureText: {
-    color: 'rgba(255,255,255,0.82)',
+    color: 'rgba(255,255,255,0.52)',
     fontSize: 12,
     lineHeight: 18,
-    textAlign: 'left',
+  },
+  benefitsSection: {
+    marginTop: 18,
+    paddingHorizontal: 2,
+  },
+  benefitsTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 14,
+  },
+  valueList: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 14,
+  },
+  valueItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  valueDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#4DA1FF',
+    marginRight: 12,
+  },
+  valueText: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  bottomCard: {
+    backgroundColor: 'rgba(21,101,192,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(125,183,255,0.14)',
+    borderRadius: 22,
+    padding: 16,
+  },
+  bottomCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  bottomCardText: {
+    color: 'rgba(255,255,255,0.74)',
+    fontSize: 14,
+    lineHeight: 21,
   },
 });

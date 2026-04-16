@@ -4,13 +4,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import SetupShell from '../../components/setup/SetupShell';
 import { useAppContext } from '../../context/AppContext';
 
 const SUGGESTED_SUBJECTS = [
@@ -39,9 +38,12 @@ export default function MateriasScreen() {
     );
   }, [setupData.materias]);
 
+  const selectedCount = setupData.materias.length;
+
   function handleAddSubject() {
     const trimmed = input.trim();
     if (!trimmed) return;
+
     addSubject(trimmed);
     setInput('');
   }
@@ -50,7 +52,7 @@ export default function MateriasScreen() {
     addSubject(subject);
   }
 
-  function handleFinish() {
+  function handleContinue() {
     if (flow === 'wizard') {
       router.replace('/setup');
       return;
@@ -59,272 +61,234 @@ export default function MateriasScreen() {
     router.back();
   }
 
+  function getFooterHint() {
+    if (selectedCount === 0) {
+      return 'Adicione pelo menos uma matéria para gerar seu cronograma.';
+    }
+
+    if (selectedCount === 1) {
+      return '1 matéria selecionada. Você já pode seguir, mas o plano ficará mais simples.';
+    }
+
+    if (selectedCount <= 4) {
+      return `${selectedCount} matérias selecionadas. Bom começo para um plano equilibrado.`;
+    }
+
+    return `${selectedCount} matérias selecionadas. Seu plano terá mais diversidade e rotação.`;
+  }
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SetupShell
+      step={7}
+      totalSteps={7}
+      title="Quais matérias entram no seu plano?"
+      subtitle="Adicione as matérias que o Cronofy vai distribuir no seu cronograma inicial."
+      primaryLabel="Concluir setup"
+      onPrimaryPress={handleContinue}
+      primaryDisabled={selectedCount === 0}
+      secondaryLabel={selectedCount > 0 ? 'Limpar matérias' : 'Voltar'}
+      onSecondaryPress={
+        selectedCount > 0 ? clearSubjects : () => router.back()
+      }
+      footerHint={getFooterHint()}
+    >
       <KeyboardAvoidingView
-        style={styles.keyboard}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.heroCard}>
-            <Text style={styles.eyebrow}>Setup</Text>
-            <Text style={styles.title}>Escolha suas matérias</Text>
-            <Text style={styles.subtitle}>
-              Adicione as matérias que vão compor seu cronograma inicial.
-            </Text>
-
-            <View style={styles.heroStatsRow}>
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>{setupData.materias.length}</Text>
-                <Text style={styles.heroStatLabel}>Selecionadas</Text>
-              </View>
-
-              <View style={styles.heroDivider} />
-
-              <View style={styles.heroStat}>
-                <Text style={styles.heroStatValue}>
-                  {Math.max(0, SUGGESTED_SUBJECTS.length - setupData.materias.length)}
-                </Text>
-                <Text style={styles.heroStatLabel}>Sugestões</Text>
-              </View>
-            </View>
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{selectedCount}</Text>
+            <Text style={styles.statLabel}>Selecionadas</Text>
           </View>
 
-          <View style={styles.inputCard}>
-            <Text style={styles.sectionTitle}>Adicionar manualmente</Text>
+          <View style={styles.statDivider} />
 
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Ex: Matemática"
-              placeholderTextColor="#94A3B8"
-              style={styles.input}
-              returnKeyType="done"
-              onSubmitEditing={handleAddSubject}
-            />
-
-            <Pressable
-              onPress={handleAddSubject}
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.primaryButtonText}>Adicionar matéria</Text>
-            </Pressable>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{availableSuggestions.length}</Text>
+            <Text style={styles.statLabel}>Sugestões</Text>
           </View>
+        </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sugestões rápidas</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Adicionar manualmente</Text>
 
-            <View style={styles.chipsWrap}>
-              {availableSuggestions.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyText}>
-                    Todas as sugestões já foram adicionadas.
-                  </Text>
-                </View>
-              ) : (
-                availableSuggestions.map((subject) => (
-                  <Pressable
-                    key={subject}
-                    onPress={() => handleSelectSuggestion(subject)}
-                    style={({ pressed }) => [
-                      styles.suggestionChip,
-                      pressed && styles.chipPressed,
-                    ]}
-                  >
-                    <Text style={styles.suggestionChipText}>{subject}</Text>
-                  </Pressable>
-                ))
-              )}
-            </View>
-          </View>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Ex: Matemática"
+            placeholderTextColor="#94A3B8"
+            style={styles.input}
+            returnKeyType="done"
+            onSubmitEditing={handleAddSubject}
+          />
 
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Suas matérias</Text>
+          <Pressable
+            onPress={handleAddSubject}
+            style={({ pressed }) => [
+              styles.addButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <Text style={styles.addButtonText}>Adicionar matéria</Text>
+          </Pressable>
+        </View>
 
-              {setupData.materias.length > 0 && (
-                <Pressable
-                  onPress={clearSubjects}
-                  style={({ pressed }) => [
-                    styles.clearPill,
-                    pressed && styles.pillPressed,
-                  ]}
-                >
-                  <Text style={styles.clearPillText}>Limpar</Text>
-                </Pressable>
-              )}
-            </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sugestões rápidas</Text>
 
-            {setupData.materias.length === 0 ? (
-              <View style={styles.emptyStateCard}>
-                <Text style={styles.emptyStateTitle}>Nada por aqui ainda</Text>
-                <Text style={styles.emptyStateText}>
-                  Adicione pelo menos uma matéria para gerar o cronograma.
+          <View style={styles.chipsWrap}>
+            {availableSuggestions.length === 0 ? (
+              <View style={styles.emptyInlineCard}>
+                <Text style={styles.emptyInlineText}>
+                  Todas as sugestões já foram adicionadas.
                 </Text>
               </View>
             ) : (
-              setupData.materias.map((materia, index) => (
-                <View key={`${materia}-${index}`} style={styles.subjectItem}>
+              availableSuggestions.map((subject) => (
+                <Pressable
+                  key={subject}
+                  onPress={() => handleSelectSuggestion(subject)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    pressed && styles.chipPressed,
+                  ]}
+                >
+                  <Text style={styles.chipText}>{subject}</Text>
+                </Pressable>
+              ))
+            )}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Suas matérias</Text>
+
+            {selectedCount > 0 ? (
+              <Text style={styles.sectionCounter}>{selectedCount}</Text>
+            ) : null}
+          </View>
+
+          {selectedCount === 0 ? (
+            <View style={styles.emptyStateCard}>
+              <Text style={styles.emptyStateTitle}>Nada por aqui ainda</Text>
+              <Text style={styles.emptyStateText}>
+                Adicione pelo menos uma matéria para o Cronofy montar seu plano.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.subjectsList}>
+              {setupData.materias.map((materia, index) => (
+                <View key={`${materia}-${index}`} style={styles.subjectCard}>
                   <View style={styles.subjectBadge}>
                     <Text style={styles.subjectBadgeText}>{index + 1}</Text>
                   </View>
 
                   <View style={styles.subjectContent}>
-                    <Text style={styles.subjectText}>{materia}</Text>
-                    <Text style={styles.subjectSubtext}>Pronta para entrar no plano</Text>
+                    <Text style={styles.subjectTitle}>{materia}</Text>
+                    <Text style={styles.subjectSubtitle}>
+                      Pronta para entrar no cronograma
+                    </Text>
                   </View>
 
                   <Pressable
                     onPress={() => removeSubject(materia)}
                     style={({ pressed }) => [
                       styles.removeButton,
-                      pressed && styles.removeButtonPressed,
+                      pressed && styles.buttonPressed,
                     ]}
                   >
                     <Text style={styles.removeButtonText}>Remover</Text>
                   </Pressable>
                 </View>
-              ))
-            )}
-          </View>
-
-          <View style={styles.footer}>
-            <Pressable
-              onPress={handleFinish}
-              style={({ pressed }) => [
-                styles.footerPrimaryButton,
-                pressed && styles.buttonPressed,
-              ]}
-            >
-              <Text style={styles.footerPrimaryButtonText}>Concluir</Text>
-            </Pressable>
-
-            <Text style={styles.footerHint}>
-              Depois você poderá usar IA para sugerir matérias e ajustar o cronograma.
-            </Text>
-          </View>
-        </ScrollView>
+              ))}
+            </View>
+          )}
+        </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SetupShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#EEF5FF',
-  },
-  keyboard: {
-    flex: 1,
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 32,
-  },
-  heroCard: {
-    backgroundColor: '#1565C0',
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 18,
-  },
-  eyebrow: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#DCEBFF',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#EAF3FF',
-    marginBottom: 20,
-  },
-  heroStatsRow: {
+  statsCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCEBFF',
     borderRadius: 18,
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 16,
+    marginBottom: 18,
   },
-  heroStat: {
+  statItem: {
     flex: 1,
     alignItems: 'center',
   },
-  heroStatValue: {
-    fontSize: 24,
+  statValue: {
+    fontSize: 26,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#0F172A',
     marginBottom: 4,
   },
-  heroStatLabel: {
+  statLabel: {
     fontSize: 13,
-    color: '#DCEBFF',
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#64748B',
   },
-  heroDivider: {
+  statDivider: {
     width: 1,
-    height: 36,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    marginHorizontal: 8,
-  },
-  inputCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#DCEBFF',
-    marginBottom: 18,
+    height: 34,
+    backgroundColor: '#DCEBFF',
+    marginHorizontal: 10,
   },
   section: {
     marginBottom: 18,
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
     gap: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 12,
   },
+  sectionCounter: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 999,
+    backgroundColor: '#EAF3FF',
+    color: '#1565C0',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 13,
+    fontWeight: '800',
+    paddingTop: 5,
+  },
   input: {
-    backgroundColor: '#F8FBFF',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#DCEBFF',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
     fontSize: 15,
     color: '#0F172A',
     marginBottom: 12,
   },
-  primaryButton: {
+  addButton: {
     backgroundColor: '#1565C0',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  primaryButtonText: {
+  addButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
@@ -334,7 +298,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
-  suggestionChip: {
+  chip: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#CFE2FF',
@@ -342,12 +306,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  suggestionChipText: {
+  chipText: {
     color: '#1E3A8A',
     fontSize: 14,
     fontWeight: '700',
   },
-  emptyCard: {
+  chipPressed: {
+    opacity: 0.88,
+  },
+  emptyInlineCard: {
     width: '100%',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -355,25 +322,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
   },
-  emptyText: {
+  emptyInlineText: {
     color: '#64748B',
     fontSize: 14,
     fontStyle: 'italic',
   },
-  clearPill: {
-    backgroundColor: '#E0ECFF',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  clearPillText: {
-    color: '#1565C0',
-    fontSize: 13,
-    fontWeight: '800',
-  },
   emptyStateCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
+    borderRadius: 18,
     padding: 18,
     borderWidth: 1,
     borderColor: '#DCEBFF',
@@ -386,16 +342,18 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
     color: '#64748B',
   },
-  subjectItem: {
+  subjectsList: {
+    gap: 10,
+  },
+  subjectCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
     borderColor: '#DCEBFF',
-    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -417,15 +375,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  subjectText: {
+  subjectTitle: {
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
     marginBottom: 4,
   },
-  subjectSubtext: {
+  subjectSubtitle: {
     fontSize: 13,
     color: '#64748B',
+    fontWeight: '500',
   },
   removeButton: {
     backgroundColor: '#FEE2E2',
@@ -438,38 +397,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  footer: {
-    marginTop: 6,
-  },
-  footerPrimaryButton: {
-    backgroundColor: '#1565C0',
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  footerPrimaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  footerHint: {
-    textAlign: 'center',
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#64748B',
-  },
   buttonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
-  },
-  chipPressed: {
-    opacity: 0.88,
-  },
-  pillPressed: {
-    opacity: 0.88,
-  },
-  removeButtonPressed: {
-    opacity: 0.88,
   },
 });
