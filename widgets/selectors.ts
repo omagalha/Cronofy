@@ -1,109 +1,147 @@
-import { AI_SIGNAL_MESSAGES } from './constants';
 import {
-    formatBlockTimeLabel,
-    getDaysLeft,
-    getShortExamTitle,
-    inferCountdownProgress,
+  formatBlockTimeLabel,
+  getDaysLeft,
+  getShortExamTitle,
+  inferCountdownProgress,
 } from './formatters';
 import {
-    AIDailySignalWidgetData,
-    CountdownRingWidgetData,
-    NextBlockWidgetData,
-    WidgetRiskLevel,
+  AIDailySignalWidgetData,
+  CountdownRingWidgetData,
+  NextBlockWidgetData,
+  WidgetRiskLevel,
 } from './types';
 
-type SetupLike = {
+type WidgetSetupSource = {
   concurso?: string;
-  dataProva?: string;
+  examDate?: string;
 };
 
-type BlockLike = {
-  id?: string;
+type WidgetBlockSource = {
   subject?: string;
-  title?: string;
   completed?: boolean;
-  duration?: number;
+  duration?: string | number;
   time?: string;
-  hour?: string;
-  startsAt?: string;
 };
 
-type ScheduleDayLike = {
+type WidgetDaySource = {
   day?: string;
-  blocks?: BlockLike[];
+  date?: string;
+  blocks?: WidgetBlockSource[];
 };
 
-type ScheduleLike =
-  | ScheduleDayLike[]
-  | {
-      days?: ScheduleDayLike[];
-    }
-  | null
-  | undefined;
+type WidgetScheduleSource = {
+  days?: WidgetDaySource[];
+} | WidgetDaySource[] | null | undefined;
 
-type AILike = {
-  currentRiskLevel?: WidgetRiskLevel | 'low' | 'medium' | 'high';
-  bestStudyPeriod?: string;
-  hardestSubject?: string;
+type WidgetAISource = {
+  currentRiskLevel?: 'low' | 'medium' | 'high';
+  bestStudyPeriod?: string | null;
+  hardestSubject?: string | null;
   suggestedLoadFactor?: number;
-};
+} | null | undefined;
 
-function normalizeSchedule(schedule: ScheduleLike): ScheduleDayLike[] {
+const AI_SIGNAL_MESSAGES = {
+  high: {
+    message: 'Reduza a carga hoje',
+    supportLabel: 'risco alto',
+  },
+  medium: {
+    message: 'Mantenha ritmo leve',
+    supportLabel: 'preserve constância',
+  },
+  low: {
+    message: 'Você está bem hoje',
+    supportLabel: 'boa janela de estudo',
+  },
+  empty: {
+    message: 'Estude hoje para ativar insights',
+    supportLabel: 'Cronofy',
+  },
+} as const;
+
+function normalizeSchedule(schedule: WidgetScheduleSource): WidgetDaySource[] {
   if (!schedule) return [];
   if (Array.isArray(schedule)) return schedule;
   if (Array.isArray(schedule.days)) return schedule.days;
   return [];
 }
 
+function getTodayDateKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function getTodayWeekdayName(): string {
   const weekdays = [
-    'Domingo',
-    'Segunda-feira',
-    'Terça-feira',
-    'Quarta-feira',
-    'Quinta-feira',
-    'Sexta-feira',
-    'Sábado',
+    'domingo',
+    'segunda-feira',
+    'terça-feira',
+    'quarta-feira',
+    'quinta-feira',
+    'sexta-feira',
+    'sábado',
   ];
   return weekdays[new Date().getDay()];
 }
 
-function findTodayBlocks(schedule: ScheduleLike): BlockLike[] {
+function normalizeText(value?: string | null): string {
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseDuration(duration?: string | number): number {
+  if (typeof duration === 'number') return duration;
+  if (!duration) return 0;
+
+  const value = duration.toLowerCase().trim();
+
+  if (value.includes('h')) {
+    const hours = Number(value.match(/(\d+)\s*h/)?.[1] ?? 0);
+    const minutes = Number(value.match(/(\d+)\s*min/)?.[1] ?? 0);
+    return hours * 60 + minutes;
+  }
+
+  const parsed = Number.parseInt(value.replace(/\D/g, ''), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function findTodayBlocks(schedule: WidgetScheduleSource): WidgetBlockSource[] {
   const days = normalizeSchedule(schedule);
-  const today = getTodayWeekdayName();
+  const todayDate = getTodayDateKey();
+  const todayWeekday = getTodayWeekdayName();
 
-  const todayEntry = days.find((day) => day.day === today);
-  if (!todayEntry?.blocks) return [];
+  const todayEntry =
+    days.find((day) => normalizeText(day.date) === todayDate) ??
+    days.find((day) => normalizeText(day.day) === todayWeekday);
 
-  return todayEntry.blocks;
+  return todayEntry?.blocks ?? [];
 }
 
-function getBlockSubject(block: BlockLike): string {
-  return block.subject || block.title || 'Bloco de estudo';
-}
-
-function getBlockHour(block: BlockLike): string | null {
-  return block.hour || block.time || block.startsAt || null;
-}
-
-function isBlockCompleted(block: BlockLike): boolean {
-  return Boolean(block.completed);
-}
-
-function inferNextBlockState(timeLabel: string, isTodayDone: boolean): NextBlockWidgetData['state'] {
+function inferNextBlockState(
+  timeLabel: string,
+  isTodayDone: boolean
+): NextBlockWidgetData['state'] {
   if (isTodayDone) return 'done';
   if (!timeLabel || timeLabel === '--') return 'upcoming';
 
   const currentHour = new Date().getHours();
 
-  if (timeLabel.includes('08:') || timeLabel.includes('09:') || timeLabel.includes('10:')) {
+  if (
+    timeLabel.includes('08:') ||
+    timeLabel.includes('09:') ||
+    timeLabel.includes('10:')
+  ) {
     if (currentHour >= 8 && currentHour <= 10) return 'ideal';
   }
 
   return 'upcoming';
 }
 
-function getNextBlockStatusLabel(state: NextBlockWidgetData['state']): string {
+function getNextBlockStatusLabel(
+  state: NextBlockWidgetData['state']
+): string {
   switch (state) {
     case 'ideal':
       return 'hora ideal';
@@ -113,17 +151,16 @@ function getNextBlockStatusLabel(state: NextBlockWidgetData['state']): string {
       return 'bom trabalho';
     case 'empty':
       return 'Cronofy';
-    case 'upcoming':
     default:
       return 'em breve';
   }
 }
 
 export function selectCountdownRingWidget(
-  setupData?: SetupLike | null
+  setupData?: WidgetSetupSource | null
 ): CountdownRingWidgetData {
   const examTitle = getShortExamTitle(setupData?.concurso);
-  const daysLeft = getDaysLeft(setupData?.dataProva);
+  const daysLeft = getDaysLeft(setupData?.examDate);
 
   if (daysLeft === null) {
     return {
@@ -160,10 +197,12 @@ export function selectCountdownRingWidget(
   };
 }
 
-export function selectNextBlockWidget(schedule?: ScheduleLike): NextBlockWidgetData {
+export function selectNextBlockWidget(
+  schedule?: WidgetScheduleSource
+): NextBlockWidgetData {
   const todayBlocks = findTodayBlocks(schedule);
 
-  if (todayBlocks.length === 0) {
+  if (!todayBlocks.length) {
     return {
       subject: 'Sem plano ativo',
       timeLabel: '--',
@@ -173,9 +212,9 @@ export function selectNextBlockWidget(schedule?: ScheduleLike): NextBlockWidgetD
     };
   }
 
-  const pendingBlocks = todayBlocks.filter((block) => !isBlockCompleted(block));
+  const pendingBlocks = todayBlocks.filter((block) => !block.completed);
 
-  if (pendingBlocks.length === 0) {
+  if (!pendingBlocks.length) {
     return {
       subject: 'Dia concluído',
       timeLabel: 'Tudo certo por hoje',
@@ -186,15 +225,12 @@ export function selectNextBlockWidget(schedule?: ScheduleLike): NextBlockWidgetD
   }
 
   const nextBlock = pendingBlocks[0];
-  const subject = getBlockSubject(nextBlock);
-  const time = getBlockHour(nextBlock);
-  const duration = nextBlock.duration ?? 0;
-  const timeLabel = formatBlockTimeLabel(time, duration);
-
+  const duration = parseDuration(nextBlock.duration);
+  const timeLabel = formatBlockTimeLabel(nextBlock.time, duration);
   const state = inferNextBlockState(timeLabel, false);
 
   return {
-    subject,
+    subject: nextBlock.subject || 'Bloco de estudo',
     timeLabel,
     duration,
     statusLabel: getNextBlockStatusLabel(state),
@@ -202,7 +238,9 @@ export function selectNextBlockWidget(schedule?: ScheduleLike): NextBlockWidgetD
   };
 }
 
-export function selectAIDailySignalWidget(aiData?: AILike | null): AIDailySignalWidgetData {
+export function selectAIDailySignalWidget(
+  aiData?: WidgetAISource
+): AIDailySignalWidgetData {
   if (!aiData?.currentRiskLevel) {
     return {
       message: AI_SIGNAL_MESSAGES.empty.message,
@@ -216,10 +254,9 @@ export function selectAIDailySignalWidget(aiData?: AILike | null): AIDailySignal
   if (riskLevel === 'high') {
     return {
       message: AI_SIGNAL_MESSAGES.high.message,
-      supportLabel:
-        aiData.bestStudyPeriod
-          ? `melhor janela: ${aiData.bestStudyPeriod}`
-          : AI_SIGNAL_MESSAGES.high.supportLabel,
+      supportLabel: aiData.bestStudyPeriod
+        ? `melhor janela: ${aiData.bestStudyPeriod}`
+        : AI_SIGNAL_MESSAGES.high.supportLabel,
       riskLevel: 'high',
     };
   }
@@ -229,21 +266,19 @@ export function selectAIDailySignalWidget(aiData?: AILike | null): AIDailySignal
       message: AI_SIGNAL_MESSAGES.medium.message,
       supportLabel:
         typeof aiData.suggestedLoadFactor === 'number'
-          ? `carga sugerida: ${Math.round(aiData.suggestedLoadFactor)}%`
+          ? `carga sugerida: ${Math.round(aiData.suggestedLoadFactor * 100)}%`
           : AI_SIGNAL_MESSAGES.medium.supportLabel,
       riskLevel: 'medium',
     };
   }
 
   return {
-    message:
-      aiData.hardestSubject
-        ? `Revise ${aiData.hardestSubject} hoje`
-        : AI_SIGNAL_MESSAGES.low.message,
-    supportLabel:
-      aiData.bestStudyPeriod
-        ? `melhor janela: ${aiData.bestStudyPeriod}`
-        : AI_SIGNAL_MESSAGES.low.supportLabel,
+    message: aiData.hardestSubject
+      ? `Revise ${aiData.hardestSubject} hoje`
+      : AI_SIGNAL_MESSAGES.low.message,
+    supportLabel: aiData.bestStudyPeriod
+      ? `melhor janela: ${aiData.bestStudyPeriod}`
+      : AI_SIGNAL_MESSAGES.low.supportLabel,
     riskLevel: 'low',
   };
 }

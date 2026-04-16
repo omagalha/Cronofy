@@ -4,14 +4,14 @@ import { WidgetSnapshot } from './types';
 type AppContextLike = {
   setupData?: {
     concurso?: string;
-    dataProva?: string;
+    examDate?: string;
   } | null;
   schedule?: unknown;
   persistedSchedule?: unknown;
   aiAnalysis?: {
     currentRiskLevel?: 'low' | 'medium' | 'high';
-    bestStudyPeriod?: string;
-    hardestSubject?: string;
+    bestStudyPeriod?: string | null;
+    hardestSubject?: string | null;
     suggestedLoadFactor?: number;
   } | null;
 };

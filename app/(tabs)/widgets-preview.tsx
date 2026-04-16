@@ -7,17 +7,32 @@ import {
   View,
 } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+
 import { useAppContext } from '../../context/AppContext';
 import { buildWidgetSnapshotFromAppContext } from '../../widgets/fromAppContext';
-import {
-  createDoneMockSnapshot,
-  createEmptyMockSnapshot,
-  createHighRiskMockSnapshot,
-  createMockSnapshot,
-} from '../../widgets/mock';
 import { saveWidgetSnapshot } from '../../widgets/storage';
+import { WidgetSnapshot } from '../../widgets/types';
 
-type PreviewMode = 'real' | 'normal' | 'empty' | 'highRisk' | 'done';
+type PreviewMode = 'real' | 'focused' | 'empty' | 'highRisk' | 'done';
+
+type AppContextPreviewSource = {
+  setupData?: {
+    concurso?: string;
+    examDate?: string;
+  } | null;
+  schedule?: unknown;
+  persistedSchedule?: unknown;
+  aiAnalysis?: {
+    currentRiskLevel?: 'low' | 'medium' | 'high';
+    bestStudyPeriod?: string | null;
+    hardestSubject?: string | null;
+    suggestedLoadFactor?: number;
+  } | null;
+  streak?: {
+    currentStreak: number;
+    bestStreak: number;
+  };
+};
 
 export default function WidgetsPreviewScreen() {
   const {
@@ -25,50 +40,210 @@ export default function WidgetsPreviewScreen() {
     schedule,
     persistedSchedule,
     aiAnalysis,
-  } = useAppContext() as any;
+    streak,
+  } = useAppContext();
 
   const [mode, setMode] = useState<PreviewMode>('real');
 
-  const realSnapshot = useMemo(() => {
+  const appSnapshotSource = useMemo<AppContextPreviewSource>(
+    () => ({
+      setupData: setupData
+        ? {
+            concurso: setupData.concurso,
+            examDate: setupData.examDate,
+          }
+        : null,
+      schedule,
+      persistedSchedule,
+      aiAnalysis: aiAnalysis
+        ? {
+            currentRiskLevel: aiAnalysis.currentRiskLevel,
+            bestStudyPeriod: aiAnalysis.bestStudyPeriod,
+            hardestSubject: aiAnalysis.hardestSubject,
+            suggestedLoadFactor: aiAnalysis.suggestedLoadFactor,
+          }
+        : null,
+      streak,
+    }),
+    [setupData, schedule, persistedSchedule, aiAnalysis, streak]
+  );
+
+  const realSnapshot = useMemo<WidgetSnapshot | null>(() => {
     try {
-      return buildWidgetSnapshotFromAppContext({
-        setupData,
-        schedule,
-        persistedSchedule,
-        aiAnalysis,
-      });
+      return buildWidgetSnapshotFromAppContext(appSnapshotSource);
     } catch (error) {
-      console.warn('Erro ao montar snapshot real', error);
+      console.warn('Erro ao montar widget snapshot real', error);
       return null;
     }
-  }, [setupData, schedule, persistedSchedule, aiAnalysis]);
+  }, [appSnapshotSource]);
 
   useEffect(() => {
     if (!realSnapshot) return;
     saveWidgetSnapshot(realSnapshot);
   }, [realSnapshot]);
 
-  const snapshot = useMemo(() => {
-    if (mode === 'real' && realSnapshot) {
-      return realSnapshot;
-    }
+  const snapshot = useMemo<WidgetSnapshot>(() => {
+    const base =
+      realSnapshot ??
+      buildWidgetSnapshotFromAppContext({
+        setupData: {
+          concurso: 'Cronofy',
+          examDate: undefined,
+        },
+        schedule: null,
+        persistedSchedule: null,
+        aiAnalysis: null,
+      });
 
     switch (mode) {
       case 'empty':
-        return createEmptyMockSnapshot();
+        return {
+          ...base,
+          countdownRing: {
+            examTitle: 'Cronofy',
+            daysLeft: null,
+            progress: 0,
+            status: 'empty',
+          },
+          nextBlock: {
+            subject: 'Sem plano ativo',
+            timeLabel: '--',
+            duration: 0,
+            statusLabel: 'Cronofy',
+            state: 'empty',
+          },
+          aiDailySignal: {
+            message: 'Estude hoje para ativar insights',
+            supportLabel: 'Cronofy',
+            riskLevel: 'empty',
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
       case 'highRisk':
-        return createHighRiskMockSnapshot();
+        return {
+          ...base,
+          countdownRing: {
+            examTitle: base.countdownRing.examTitle || 'Concurso',
+            daysLeft:
+              typeof base.countdownRing.daysLeft === 'number'
+                ? Math.max(base.countdownRing.daysLeft, 12)
+                : 12,
+            progress:
+              typeof base.countdownRing.progress === 'number'
+                ? Math.max(base.countdownRing.progress, 88)
+                : 88,
+            status: 'active',
+          },
+          nextBlock: {
+            subject: 'Português',
+            timeLabel: '19:00 • 30 min',
+            duration: 30,
+            statusLabel: 'em breve',
+            state: 'upcoming',
+          },
+          aiDailySignal: {
+            message: 'Reduza a carga hoje',
+            supportLabel: 'risco alto',
+            riskLevel: 'high',
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
       case 'done':
-        return createDoneMockSnapshot();
-      case 'normal':
-        return createMockSnapshot();
+        return {
+          ...base,
+          nextBlock: {
+            subject: 'Dia concluído',
+            timeLabel: 'Tudo certo por hoje',
+            duration: 0,
+            statusLabel: 'bom trabalho',
+            state: 'done',
+          },
+          aiDailySignal: {
+            message: 'Boa consistência hoje',
+            supportLabel: 'plano do dia concluído',
+            riskLevel: 'low',
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
+      case 'focused':
+        return {
+          ...base,
+          nextBlock: {
+            subject: 'Matemática',
+            timeLabel: '08:00 • 45 min',
+            duration: 45,
+            statusLabel: 'hora ideal',
+            state: 'ideal',
+          },
+          aiDailySignal: {
+            message: 'Você está bem hoje',
+            supportLabel: 'boa janela de estudo',
+            riskLevel: 'low',
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
       case 'real':
       default:
-        return realSnapshot ?? createMockSnapshot();
+        return base;
     }
   }, [mode, realSnapshot]);
 
   const riskTone = getRiskTone(snapshot.aiDailySignal.riskLevel);
+
+  const previewStats = useMemo(() => {
+    switch (mode) {
+      case 'empty':
+        return {
+          streakCurrent: 0,
+          streakBest: 0,
+          completed: 0,
+          total: 0,
+          percent: 0,
+        };
+      case 'done':
+        return {
+          streakCurrent: Math.max(streak?.currentStreak ?? 0, 12),
+          streakBest: Math.max(streak?.bestStreak ?? 0, 18),
+          completed: 4,
+          total: 4,
+          percent: 100,
+        };
+      case 'focused':
+        return {
+          streakCurrent: Math.max(streak?.currentStreak ?? 0, 5),
+          streakBest: Math.max(streak?.bestStreak ?? 0, 11),
+          completed: 1,
+          total: 4,
+          percent: 25,
+        };
+      case 'highRisk':
+        return {
+          streakCurrent: Math.max((streak?.currentStreak ?? 1) - 1, 1),
+          streakBest: Math.max(streak?.bestStreak ?? 0, 9),
+          completed: 1,
+          total: 4,
+          percent: 25,
+        };
+      case 'real':
+      default:
+        return {
+          streakCurrent: streak?.currentStreak ?? 0,
+          streakBest: streak?.bestStreak ?? 0,
+          completed: snapshot.nextBlock.state === 'done' ? 4 : 2,
+          total: snapshot.nextBlock.state === 'empty' ? 0 : 4,
+          percent:
+            snapshot.nextBlock.state === 'done'
+              ? 100
+              : snapshot.nextBlock.state === 'empty'
+              ? 0
+              : 50,
+        };
+    }
+  }, [mode, snapshot.nextBlock.state, streak]);
 
   return (
     <ScrollView
@@ -78,10 +253,10 @@ export default function WidgetsPreviewScreen() {
     >
       <View style={styles.header}>
         <View>
-          <Text style={styles.eyebrow}>Preview Lab</Text>
+          <Text style={styles.eyebrow}>Widget Lab</Text>
           <Text style={styles.screenTitle}>Galeria de widgets</Text>
           <Text style={styles.screenSubtitle}>
-            Showcase visual do Cronofy para Home Screen.
+            Preview dos widgets reais do Cronofy em estados úteis de produto.
           </Text>
         </View>
       </View>
@@ -97,9 +272,9 @@ export default function WidgetsPreviewScreen() {
           onPress={() => setMode('real')}
         />
         <ModeChip
-          label="Normal"
-          active={mode === 'normal'}
-          onPress={() => setMode('normal')}
+          label="Focused"
+          active={mode === 'focused'}
+          onPress={() => setMode('focused')}
         />
         <ModeChip
           label="Empty"
@@ -134,8 +309,8 @@ export default function WidgetsPreviewScreen() {
 
         <StreakPulseWidget
           title="🔥 Streak"
-          current={mode === 'empty' ? 0 : mode === 'done' ? 12 : 7}
-          best={mode === 'empty' ? 0 : 18}
+          current={previewStats.streakCurrent}
+          best={previewStats.streakBest}
         />
       </View>
 
@@ -147,9 +322,9 @@ export default function WidgetsPreviewScreen() {
       <View style={styles.stack}>
         <NextBlockWidget snapshot={snapshot} />
         <TodayProgressWidget
-          completed={mode === 'empty' ? 0 : mode === 'done' ? 4 : 2}
-          total={mode === 'empty' ? 0 : 4}
-          percent={mode === 'empty' ? 0 : mode === 'done' ? 100 : 50}
+          completed={previewStats.completed}
+          total={previewStats.total}
+          percent={previewStats.percent}
         />
         <AIWidget snapshot={snapshot} tone={riskTone} />
       </View>
@@ -162,9 +337,9 @@ export default function WidgetsPreviewScreen() {
       <View style={styles.stack}>
         <DayBoardLargeWidget
           snapshot={snapshot}
-          progressPercent={mode === 'empty' ? 0 : mode === 'done' ? 100 : 50}
-          completed={mode === 'empty' ? 0 : mode === 'done' ? 4 : 2}
-          total={mode === 'empty' ? 0 : 4}
+          progressPercent={previewStats.percent}
+          completed={previewStats.completed}
+          total={previewStats.total}
           tone={riskTone}
         />
       </View>
@@ -269,7 +444,7 @@ function StreakPulseWidget({
   );
 }
 
-function NextBlockWidget({ snapshot }: { snapshot: any }) {
+function NextBlockWidget({ snapshot }: { snapshot: WidgetSnapshot }) {
   const badgeTone = nextBlockBadgeTone(snapshot.nextBlock.state);
 
   return (
@@ -280,7 +455,6 @@ function NextBlockWidget({ snapshot }: { snapshot: any }) {
       </View>
 
       <Text style={styles.mediumHeadline}>{snapshot.nextBlock.subject}</Text>
-
       <Text style={styles.mediumSubline}>{snapshot.nextBlock.timeLabel}</Text>
     </View>
   );
@@ -310,7 +484,10 @@ function TodayProgressWidget({
 
       <View style={styles.progressBarTrack}>
         <View
-          style={[styles.progressBarFill, { width: `${Math.max(0, Math.min(percent, 100))}%` }]}
+          style={[
+            styles.progressBarFill,
+            { width: `${Math.max(0, Math.min(percent, 100))}%` },
+          ]}
         />
       </View>
     </View>
@@ -321,7 +498,7 @@ function AIWidget({
   snapshot,
   tone,
 }: {
-  snapshot: any;
+  snapshot: WidgetSnapshot;
   tone: WidgetTone;
 }) {
   return (
@@ -332,7 +509,9 @@ function AIWidget({
       </View>
 
       <Text style={styles.aiHeadline}>{snapshot.aiDailySignal.message}</Text>
-      <Text style={styles.mediumSubline}>{snapshot.aiDailySignal.supportLabel}</Text>
+      <Text style={styles.mediumSubline}>
+        {snapshot.aiDailySignal.supportLabel}
+      </Text>
     </View>
   );
 }
@@ -344,7 +523,7 @@ function DayBoardLargeWidget({
   total,
   tone,
 }: {
-  snapshot: any;
+  snapshot: WidgetSnapshot;
   progressPercent: number;
   completed: number;
   total: number;

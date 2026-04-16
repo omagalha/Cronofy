@@ -1,4 +1,6 @@
-import type { IReviewItem, ReviewReason, ReviewStage } from './review';
+import type { IReviewItem } from './review';
+
+export type { ReviewReason, ReviewStage } from './review';
 
 export type BlockMode =
   | 'focus'
@@ -21,18 +23,22 @@ export type UserPhase =
   | 'consolidating'
   | 'sprint_to_exam'
   | 'fatigue_risk';
-export type { ReviewReason, ReviewStage } from './review';
+
+export type RiskLevel = 'low' | 'medium' | 'high';
+
+export type StudyPeriod = 'morning' | 'afternoon' | 'night' | 'unknown';
 
 export interface BlockExecution {
   id: string;
   blockId: string;
+  mode?: BlockMode;
   startedAt?: string | null;
   completedAt?: string | null;
   interruptedAt?: string | null;
   interruptionCount: number;
-  perceivedEnergyLevel: number | null; // 1-5
-  perceivedDifficulty: number | null; // 1-5
-  confidenceScore: number | null; // 1-5
+  perceivedEnergyLevel: number | null;
+  perceivedDifficulty: number | null;
+  confidenceScore: number | null;
   status: BlockStatus;
   reviewNote: string | null;
   wasRescheduled: boolean;
@@ -44,30 +50,30 @@ export interface SubjectProgress {
   subject: string;
   completedSessions: number;
   targetSessions: number;
-  completionRate: number; // 0..1
+  completionRate: number;
   lastTouchedAt?: string | null;
   daysSinceLastTouch?: number | null;
 }
 
 export interface ScheduleProgress {
-  expectedProgress: number; // 0..1
-  actualProgress: number; // 0..1
-  minimumRequiredProgress: number; // 0..1
-  variance: number; // actual - expected
+  expectedProgress: number;
+  actualProgress: number;
+  minimumRequiredProgress: number;
+  variance: number;
   completedBlocks: number;
   totalBlocks: number;
-  recoveryDebt: number; // quantidade de blocos perdidos ainda não absorvidos
-  subjectProgressMap: Record<string, SubjectProgress>;
+  recoveryDebt: number;
+  progressBySubject: Record<string, SubjectProgress>;
 }
 
 export interface AdaptiveState {
   phase: UserPhase;
-  currentRiskLevel: 'low' | 'medium' | 'high';
+  currentRiskLevel: RiskLevel;
   suggestedLoadFactor: number;
   shouldProtectConsistency: boolean;
   shouldReduceLoad: boolean;
   shouldInsertRecoveryBlock: boolean;
   shouldPrioritizeReviews: boolean;
   weakestSubject: string | null;
-  bestStudyPeriod: 'morning' | 'afternoon' | 'night' | 'unknown' | null;
+  bestStudyPeriod: StudyPeriod | null;
 }

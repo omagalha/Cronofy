@@ -1,7 +1,5 @@
 export type WidgetRiskLevel = 'low' | 'medium' | 'high' | 'empty';
-
 export type CountdownStatus = 'active' | 'today' | 'expired' | 'empty';
-
 export type NextBlockState = 'upcoming' | 'ideal' | 'now' | 'done' | 'empty';
 
 export type CountdownRingWidgetData = {

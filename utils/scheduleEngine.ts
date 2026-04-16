@@ -693,7 +693,7 @@ function createWeeklyRecoveryBlock(day: string, index: number): StudyBlock {
     duration: '30min',
     mode: 'recovery',
     type: 'review',
-    tip: 'Use este bloco para recuperar atrasos, revisar dÃºvidas ou reorganizar a semana.',
+    tip: 'Use este bloco para recuperar atrasos, revisar duvidas ou reorganizar a semana.',
     completed: false,
     skipped: false,
     status: 'pending',

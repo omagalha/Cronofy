@@ -1,4 +1,4 @@
-import { DEFAULT_EXAM_TITLE } from './constants';
+const DEFAULT_EXAM_TITLE = 'Cronofy';
 
 export function clampPercent(value: number): number {
   if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
@@ -29,7 +29,10 @@ export function getDaysLeft(targetDate?: string | null): number | null {
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
-export function formatBlockTimeLabel(hour?: string | null, duration?: number | null): string {
+export function formatBlockTimeLabel(
+  hour?: string | null,
+  duration?: number | null
+): string {
   if (!hour && !duration) return '--';
   if (hour && duration) return `${hour} • ${duration} min`;
   if (hour) return hour;
@@ -40,8 +43,6 @@ export function inferCountdownProgress(daysLeft: number | null): number {
   if (daysLeft === null) return 0;
   if (daysLeft <= 0) return 100;
 
-  // Curva simples inicial. Depois podemos sofisticar.
-  // Quanto menor o número de dias, maior a sensação de progresso/urgência.
   if (daysLeft >= 180) return 15;
   if (daysLeft >= 120) return 30;
   if (daysLeft >= 90) return 45;
