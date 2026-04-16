@@ -9,6 +9,16 @@ import React, {
   useState,
 } from 'react';
 
+import {
+  getAverageCompletionRate,
+  getBestStudyPeriod as getBestStudyPeriodFromLogs,
+  getConsistencyScore as getConsistencyScoreFromLogs,
+} from '../utils/behaviorTracker';
+import {
+  getFailureRisk,
+  getSuggestedLoadFactor as getSuggestedLoadFactorFromLogs,
+} from '../utils/predictionEngine';
+
 const STORAGE_KEYS = {
   STUDY_LOGS: '@cronofy/study_logs_v2',
   AI_ENABLED: '@cronofy/ai_enabled_v1',
@@ -91,6 +101,36 @@ function normalizeStudyLogs(value: unknown): StudyLog[] {
   return value.filter(isStudyLog);
 }
 
+function normalizeAndSortStudyLogs(logs: StudyLog[]): StudyLog[] {
+  const deduped = new Map<string, StudyLog>();
+
+  for (const log of logs) {
+    if (!log?.date) continue;
+
+    const normalized: StudyLog = {
+      ...log,
+      plannedBlocks: Math.max(0, log.plannedBlocks || 0),
+      completedBlocks: Math.max(0, log.completedBlocks || 0),
+      timeStudied: Math.max(0, log.timeStudied || 0),
+      subjects: Array.isArray(log.subjects) ? log.subjects.filter(Boolean) : [],
+      interruptionCount:
+        typeof log.interruptionCount === 'number'
+          ? Math.max(0, log.interruptionCount)
+          : undefined,
+      weeklyRecoveryBlockUsed:
+        typeof log.weeklyRecoveryBlockUsed === 'number'
+          ? Math.max(0, log.weeklyRecoveryBlockUsed)
+          : undefined,
+      period: log.period ?? 'unknown',
+    };
+
+    if (deduped.has(normalized.date)) deduped.delete(normalized.date);
+    deduped.set(normalized.date, normalized);
+  }
+
+  return Array.from(deduped.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 function isStudyStreak(value: unknown): value is StudyStreak {
   if (!value || typeof value !== 'object') return false;
 
@@ -115,71 +155,12 @@ function normalizeStreak(value: unknown): StudyStreak {
   };
 }
 
-function getCompletionRate(logs: StudyLog[]): number {
-  if (logs.length === 0) return 1;
-
-  const totals = logs.reduce(
-    (acc, log) => {
-      acc.planned += log.plannedBlocks;
-      acc.completed += log.completedBlocks;
-      return acc;
-    },
-    { planned: 0, completed: 0 }
-  );
-
-  if (totals.planned === 0) return 1;
-  const baseRate = totals.completed / totals.planned;
-  const interruptionPenalty = logs.reduce(
-    (acc, log) => acc + (log.interruptionCount ?? 0),
-    0
-  );
-
-  return Math.max(0, baseRate - interruptionPenalty * 0.01);
-}
-
-function getConsistencyScore(logs: StudyLog[]): number {
-  if (logs.length === 0) return 1;
-
-  const recentLogs = logs.slice(-7);
-  const productiveDays = recentLogs.filter((log) => log.completedBlocks > 0).length;
-  const interruptionPenalty = recentLogs.reduce(
-    (acc, log) => acc + (log.interruptionCount ?? 0),
-    0
-  );
-
-  return Math.max(
-    0,
-    productiveDays / Math.min(recentLogs.length, 7) - interruptionPenalty * 0.01
-  );
-}
-
 function getWeeklyRecoveryBlockUsed(logs: StudyLog[]): number {
   const recentLogs = logs.slice(-7);
   return recentLogs.reduce(
     (acc, log) => acc + (log.weeklyRecoveryBlockUsed ?? 0),
     0
   );
-}
-
-function getBestStudyPeriod(logs: StudyLog[]): StudyPeriod | null {
-  if (logs.length === 0) return null;
-
-  const buckets: Record<StudyPeriod, number> = {
-    morning: 0,
-    afternoon: 0,
-    night: 0,
-    unknown: 0,
-  };
-
-  for (const log of logs) {
-    buckets[log.period] += log.completedBlocks;
-  }
-
-  const ranked = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
-  const winner = ranked[0];
-
-  if (!winner || winner[1] === 0) return null;
-  return winner[0] as StudyPeriod;
 }
 
 function getHardestSubject(logs: StudyLog[]): string | null {
@@ -216,52 +197,39 @@ function getHardestSubject(logs: StudyLog[]): string | null {
   return ranked[0]?.subject ?? null;
 }
 
-function getRiskLevel(
-  consistencyScore: number,
-  completionRate: number
-): 'low' | 'medium' | 'high' {
-  if (consistencyScore < 0.45 || completionRate < 0.55) {
-    return 'high';
-  }
-
-  if (consistencyScore < 0.75 || completionRate < 0.75) {
-    return 'medium';
-  }
-
-  return 'low';
-}
-
-function getSuggestedLoadFactor(
-  riskLevel: 'low' | 'medium' | 'high'
-): number {
-  switch (riskLevel) {
-    case 'high':
-      return 0.8;
-    case 'medium':
-      return 0.9;
-    case 'low':
-    default:
-      return 1;
-  }
-}
-
 function buildAIAnalysis(logs: StudyLog[]): AIAnalysis | null {
-  if (logs.length === 0) return null;
+  const normalizedLogs = normalizeAndSortStudyLogs(logs);
+  if (normalizedLogs.length === 0) return null;
 
-  const completionRate = getCompletionRate(logs);
-  const consistencyScore = getConsistencyScore(logs);
-  const currentRiskLevel = getRiskLevel(consistencyScore, completionRate);
-  const weeklyRecoveryBlockUsed = getWeeklyRecoveryBlockUsed(logs);
+  const completionRate = getAverageCompletionRate(normalizedLogs);
+  const consistencyScore = getConsistencyScoreFromLogs(normalizedLogs);
+  const currentRiskLevel = getFailureRisk(normalizedLogs);
+  const suggestedLoadFactor = getSuggestedLoadFactorFromLogs(normalizedLogs);
+  const weeklyRecoveryBlockUsed = getWeeklyRecoveryBlockUsed(normalizedLogs);
+
+  const bestPeriod = getBestStudyPeriodFromLogs(normalizedLogs);
 
   return {
     consistencyScore,
     completionRate,
     weeklyRecoveryBlockUsed,
     currentRiskLevel,
-    suggestedLoadFactor: getSuggestedLoadFactor(currentRiskLevel),
-    bestStudyPeriod: getBestStudyPeriod(logs),
-    hardestSubject: getHardestSubject(logs),
+    suggestedLoadFactor,
+    bestStudyPeriod: bestPeriod === 'unknown' ? null : bestPeriod,
+    hardestSubject: getHardestSubject(normalizedLogs),
   };
+}
+
+function computeNextLogs(prev: StudyLog[], incoming: StudyLog): StudyLog[] {
+  const next = normalizeAndSortStudyLogs([...prev, incoming]);
+  return next;
+}
+
+function computeNextLogsUpsert(prev: StudyLog[], incoming: StudyLog): StudyLog[] {
+  const nextRaw = prev.map((entry) => (entry.date === incoming.date ? incoming : entry));
+  const hadExisting = prev.some((entry) => entry.date === incoming.date);
+  const next = normalizeAndSortStudyLogs(hadExisting ? nextRaw : [...prev, incoming]);
+  return next;
 }
 
 function toDayStart(dateString: string): Date {
@@ -358,7 +326,9 @@ export function AIProvider({ children }: { children: ReactNode }) {
 
         if (storedLogs) {
           const parsedLogs = JSON.parse(storedLogs) as unknown;
-          const normalizedLogs = normalizeStudyLogs(parsedLogs);
+          const normalizedLogs = normalizeAndSortStudyLogs(
+            normalizeStudyLogs(parsedLogs)
+          );
           setStudyLogs(normalizedLogs);
           setAIAnalysis(buildAIAnalysis(normalizedLogs));
           setStreak(buildStreakFromLogs(normalizedLogs));
@@ -440,7 +410,7 @@ export function AIProvider({ children }: { children: ReactNode }) {
 
   const addStudyLog = useCallback((log: StudyLog) => {
     setStudyLogs((prev) => {
-      const next = [...prev, log];
+      const next = computeNextLogs(prev, log);
       setAIAnalysis(buildAIAnalysis(next));
       setStreak(buildStreakFromLogs(next));
       return next;
@@ -451,15 +421,7 @@ export function AIProvider({ children }: { children: ReactNode }) {
     let nextLogs: StudyLog[] = [];
 
     setStudyLogs((prev) => {
-      const existingIndex = prev.findIndex((entry) => entry.date === log.date);
-
-      if (existingIndex >= 0) {
-        nextLogs = prev.map((entry, index) =>
-          index === existingIndex ? log : entry
-        );
-      } else {
-        nextLogs = [...prev, log];
-      }
+      nextLogs = computeNextLogsUpsert(prev, log);
 
       setAIAnalysis(buildAIAnalysis(nextLogs));
       setStreak(buildStreakFromLogs(nextLogs));
@@ -482,10 +444,12 @@ export function AIProvider({ children }: { children: ReactNode }) {
     void AsyncStorage.multiRemove([
       STORAGE_KEYS.STUDY_LOGS,
       STORAGE_KEYS.STREAK,
+      STORAGE_KEYS.AI_ENABLED,
     ]);
     setStudyLogs([]);
     setAIAnalysis(null);
     setStreak(DEFAULT_STREAK);
+    setIsAIEnabled(true);
   }, []);
 
   const clearLogs = useCallback(() => {
