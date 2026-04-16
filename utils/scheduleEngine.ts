@@ -9,6 +9,7 @@ export type UserSetupData = {
 };
 
 export type StudyBlockType = 'new' | 'review' | 'practice';
+export type ScheduleBlockMode = 'focus' | 'review' | 'recovery';
 
 export type StudyBlock = {
   id: string;
@@ -16,16 +17,24 @@ export type StudyBlock = {
   time: string;
   duration: string;
   type?: StudyBlockType;
+  mode?: ScheduleBlockMode;
   tip?: string;
   completed?: boolean;
   completedAt?: string;
   skipped?: boolean;
+  interruptionCount?: number | null;
+  perceivedEnergyLevel?: number | null;
+  perceivedDifficulty?: number | null;
+  confidenceScore?: number | null;
 };
 
 export type ScheduleDay = {
   id: string;
   day: string;
   blocks: StudyBlock[];
+  isRecoveryDay?: boolean;
+  expectedBlocksCount?: number;
+  completedBlocksCount?: number;
 };
 
 export type ScheduleMeta = {
@@ -44,6 +53,7 @@ export type PersistedSchedule = {
   days: ScheduleDay[];
   meta: ScheduleMeta;
   progress: SubjectProgressSnapshot;
+  expectedProgress?: number;
 };
 
 const ENGINE_VERSION = '1.2.0';
@@ -545,6 +555,7 @@ export const generateScheduleFromSubjects = (
         time,
         duration: regularBlockDuration,
         type,
+        mode: type === 'review' ? 'review' : 'focus',
         tip: getTipForBlock(type, normalizedSetup.nivel, normalizedSetup.foco),
       });
     }
@@ -560,6 +571,7 @@ export const generateScheduleFromSubjects = (
         time: reviewTime,
         duration: reviewBlockDuration,
         type: 'review',
+        mode: 'review',
         tip: getTipForBlock('review', normalizedSetup.nivel, normalizedSetup.foco),
       });
     }
@@ -568,6 +580,9 @@ export const generateScheduleFromSubjects = (
       id: createId('day', day, dayIndex + 1),
       day,
       blocks,
+      isRecoveryDay: false,
+      expectedBlocksCount: blocks.length,
+      completedBlocksCount: blocks.filter((block) => block.completed).length,
     });
   }
 
@@ -612,6 +627,7 @@ export const buildPersistedSchedule = (
       completedSessionsBySubject,
       targetSessionsBySubject,
     },
+    expectedProgress: 0,
   };
 };
 
@@ -664,15 +680,25 @@ export const validateSetupBeforeSchedule = (
 
 export const completeBlock = (
   schedule: PersistedSchedule,
-  blockId: string
+  blockId: string,
+  payload?: Partial<
+    Pick<
+      StudyBlock,
+      | 'mode'
+      | 'interruptionCount'
+      | 'perceivedEnergyLevel'
+      | 'perceivedDifficulty'
+      | 'confidenceScore'
+      | 'completedAt'
+    >
+  >
 ): PersistedSchedule => {
   let completedSubject: string | null = null;
   let completedSessionKey: string | null = null;
   const completedAt = new Date().toISOString();
 
-  const updatedDays = schedule.days.map((day) => ({
-    ...day,
-    blocks: day.blocks.map((block) => {
+  const updatedDays = schedule.days.map((day) => {
+    const updatedBlocks = day.blocks.map((block) => {
       if (block.id !== blockId) return block;
       if (block.completed) return block;
 
@@ -682,10 +708,25 @@ export const completeBlock = (
       return {
         ...block,
         completed: true,
-        completedAt,
+        mode: payload?.mode ?? block.mode ?? 'focus',
+        interruptionCount: payload?.interruptionCount ?? block.interruptionCount,
+        perceivedEnergyLevel:
+          payload?.perceivedEnergyLevel ?? block.perceivedEnergyLevel,
+        perceivedDifficulty:
+          payload?.perceivedDifficulty ?? block.perceivedDifficulty,
+        confidenceScore: payload?.confidenceScore ?? block.confidenceScore,
+        completedAt: payload?.completedAt ?? completedAt,
       };
-    }),
-  }));
+    });
+
+    return {
+      ...day,
+      blocks: updatedBlocks,
+      completedBlocksCount: updatedBlocks.filter((block) => block.completed).length,
+      expectedBlocksCount: day.expectedBlocksCount ?? day.blocks.length,
+      isRecoveryDay: day.isRecoveryDay ?? false,
+    };
+  });
 
   if (!completedSubject || !completedSessionKey) {
     return {

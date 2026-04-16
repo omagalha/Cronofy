@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -64,6 +65,38 @@ export default function ScheduleScreen() {
     completeBlockById,
     applyAdaptivePlan,
   } = useAppContext();
+  const [blockMetrics, setBlockMetrics] = useState<
+    Record<
+      string,
+      {
+        interruptionCount: string;
+        perceivedEnergyLevel: string;
+        perceivedDifficulty: string;
+        confidenceScore: string;
+      }
+    >
+  >({});
+
+  function updateMetric(
+    blockId: string,
+    field:
+      | 'interruptionCount'
+      | 'perceivedEnergyLevel'
+      | 'perceivedDifficulty'
+      | 'confidenceScore',
+    value: string
+  ) {
+    setBlockMetrics((prev) => ({
+      ...prev,
+      [blockId]: {
+        interruptionCount: prev[blockId]?.interruptionCount ?? '0',
+        perceivedEnergyLevel: prev[blockId]?.perceivedEnergyLevel ?? '3',
+        perceivedDifficulty: prev[blockId]?.perceivedDifficulty ?? '3',
+        confidenceScore: prev[blockId]?.confidenceScore ?? '3',
+        [field]: value,
+      },
+    }));
+  }
 
   const scheduleDays = useMemo<ScheduleDay[]>(() => {
     const source = previewAdaptiveSchedule?.length
@@ -242,12 +275,76 @@ export default function ScheduleScreen() {
                               <Text style={styles.doneBadgeText}>Concluído</Text>
                             </View>
                           ) : (
-                            <Pressable
-                              style={styles.completeButton}
-                              onPress={() => completeBlockById(block.id)}
-                            >
-                              <Text style={styles.completeButtonText}>Marcar</Text>
-                            </Pressable>
+                            <View style={styles.metricArea}>
+                              <View style={styles.metricGrid}>
+                                <TextInput
+                                  style={styles.metricInput}
+                                  placeholder="Interrupções"
+                                  placeholderTextColor="#64748B"
+                                  keyboardType="numeric"
+                                  value={blockMetrics[block.id]?.interruptionCount ?? '0'}
+                                  onChangeText={(value) =>
+                                    updateMetric(block.id, 'interruptionCount', value)
+                                  }
+                                />
+                                <TextInput
+                                  style={styles.metricInput}
+                                  placeholder="Energia (1-5)"
+                                  placeholderTextColor="#64748B"
+                                  keyboardType="numeric"
+                                  value={blockMetrics[block.id]?.perceivedEnergyLevel ?? '3'}
+                                  onChangeText={(value) =>
+                                    updateMetric(block.id, 'perceivedEnergyLevel', value)
+                                  }
+                                />
+                                <TextInput
+                                  style={styles.metricInput}
+                                  placeholder="Dificuldade (1-5)"
+                                  placeholderTextColor="#64748B"
+                                  keyboardType="numeric"
+                                  value={blockMetrics[block.id]?.perceivedDifficulty ?? '3'}
+                                  onChangeText={(value) =>
+                                    updateMetric(block.id, 'perceivedDifficulty', value)
+                                  }
+                                />
+                                <TextInput
+                                  style={styles.metricInput}
+                                  placeholder="Confiança (1-5)"
+                                  placeholderTextColor="#64748B"
+                                  keyboardType="numeric"
+                                  value={blockMetrics[block.id]?.confidenceScore ?? '3'}
+                                  onChangeText={(value) =>
+                                    updateMetric(block.id, 'confidenceScore', value)
+                                  }
+                                />
+                              </View>
+                              <Pressable
+                                style={styles.completeButton}
+                                onPress={() =>
+                                  completeBlockById(block.id, {
+                                    mode: block.type === 'review' ? 'review' : 'focus',
+                                    interruptionCount: Number.parseInt(
+                                      blockMetrics[block.id]?.interruptionCount ?? '0',
+                                      10
+                                    ),
+                                    perceivedEnergyLevel: Number.parseInt(
+                                      blockMetrics[block.id]?.perceivedEnergyLevel ?? '3',
+                                      10
+                                    ),
+                                    perceivedDifficulty: Number.parseInt(
+                                      blockMetrics[block.id]?.perceivedDifficulty ?? '3',
+                                      10
+                                    ),
+                                    confidenceScore: Number.parseInt(
+                                      blockMetrics[block.id]?.confidenceScore ?? '3',
+                                      10
+                                    ),
+                                  })
+                                }
+                              >
+                                <Text style={styles.completeButtonText}>Concluir</Text>
+                              </Pressable>
+                            </View>
                           )}
                         </View>
                       ))
@@ -490,6 +587,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
+  },
+  metricArea: {
+    width: 160,
+    gap: 8,
+  },
+  metricGrid: {
+    gap: 6,
+  },
+  metricInput: {
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 8,
+    color: '#E2E8F0',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 11,
   },
   completeButtonText: {
     color: '#FFFFFF',

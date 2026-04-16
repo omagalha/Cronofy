@@ -1,3 +1,5 @@
+import { IReviewItem } from '../apps/shared/types/review';
+
 export type Weekday =
   | 'monday'
   | 'tuesday'
@@ -81,6 +83,13 @@ interface BuildAdaptivePlanInput {
   studyLogs: StudyLog[];
   analysis?: AIAnalysis | null;
   setup?: UserSetupData;
+}
+
+export interface AdaptiveCompletionMetrics {
+  interruptionCount?: number | null;
+  perceivedEnergyLevel?: number | null;
+  perceivedDifficulty?: number | null;
+  confidenceScore?: number | null;
 }
 
 const cloneSchedule = (schedule: ScheduleDay[]): ScheduleDay[] =>
@@ -488,4 +497,63 @@ export function buildAdaptivePlan({
       rebalanceActions,
     },
   };
+}
+
+export class AdaptivePlanningEngine {
+  generateOrAdjustSchedule(input: BuildAdaptivePlanInput): AdaptivePlanningResult {
+    return buildAdaptivePlan(input);
+  }
+
+  calculateExpectedProgress(schedule: ScheduleDay[]): number {
+    const totalBlocks = schedule.reduce((acc, day) => acc + day.blocks.length, 0);
+
+    if (totalBlocks === 0) return 0;
+
+    const completedBlocks = schedule.reduce(
+      (acc, day) => acc + day.blocks.filter((block) => block.completed).length,
+      0
+    );
+
+    return Number((completedBlocks / totalBlocks).toFixed(2));
+  }
+
+  createReviewItem(block: StudyBlock): IReviewItem[] {
+    if (!block.id || !block.subject) return [];
+
+    const now = new Date();
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + 2);
+
+    return [
+      {
+        id: `review-item-${block.id}-${now.getTime()}`,
+        blockId: block.id,
+        subject: block.subject,
+        createdAt: now.toISOString(),
+        dueDate: dueDate.toISOString(),
+        status: 'pending',
+        confidenceScore: null,
+        completedAt: null,
+      },
+    ];
+  }
+
+  updateReviewItem(item: IReviewItem): IReviewItem {
+    return {
+      ...item,
+      status: item.status ?? 'pending',
+    };
+  }
+
+  handleMissedBlocks(): void {}
+
+  scheduleReviews(): void {}
+
+  balanceSubjects(): void {}
+
+  adjustDailyBlocks(): void {}
+
+  generateInsights(): string[] {
+    return [];
+  }
 }

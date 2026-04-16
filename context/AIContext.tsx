@@ -23,12 +23,15 @@ export interface StudyLog {
   completedBlocks: number;
   subjects: string[];
   timeStudied: number;
+  interruptionCount?: number;
+  weeklyRecoveryBlockUsed?: number;
   period: StudyPeriod;
 }
 
 export interface AIAnalysis {
   consistencyScore: number;
   completionRate: number;
+  weeklyRecoveryBlockUsed: number;
   currentRiskLevel: 'low' | 'medium' | 'high';
   suggestedLoadFactor: number;
   bestStudyPeriod: StudyPeriod | null;
@@ -75,6 +78,10 @@ function isStudyLog(value: unknown): value is StudyLog {
     Array.isArray(candidate.subjects) &&
     candidate.subjects.every((subject) => typeof subject === 'string') &&
     typeof candidate.timeStudied === 'number' &&
+    (typeof candidate.interruptionCount === 'number' ||
+      typeof candidate.interruptionCount === 'undefined') &&
+    (typeof candidate.weeklyRecoveryBlockUsed === 'number' ||
+      typeof candidate.weeklyRecoveryBlockUsed === 'undefined') &&
     typeof candidate.period === 'string'
   );
 }
@@ -121,7 +128,13 @@ function getCompletionRate(logs: StudyLog[]): number {
   );
 
   if (totals.planned === 0) return 1;
-  return totals.completed / totals.planned;
+  const baseRate = totals.completed / totals.planned;
+  const interruptionPenalty = logs.reduce(
+    (acc, log) => acc + (log.interruptionCount ?? 0),
+    0
+  );
+
+  return Math.max(0, baseRate - interruptionPenalty * 0.01);
 }
 
 function getConsistencyScore(logs: StudyLog[]): number {
@@ -129,8 +142,23 @@ function getConsistencyScore(logs: StudyLog[]): number {
 
   const recentLogs = logs.slice(-7);
   const productiveDays = recentLogs.filter((log) => log.completedBlocks > 0).length;
+  const interruptionPenalty = recentLogs.reduce(
+    (acc, log) => acc + (log.interruptionCount ?? 0),
+    0
+  );
 
-  return productiveDays / Math.min(recentLogs.length, 7);
+  return Math.max(
+    0,
+    productiveDays / Math.min(recentLogs.length, 7) - interruptionPenalty * 0.01
+  );
+}
+
+function getWeeklyRecoveryBlockUsed(logs: StudyLog[]): number {
+  const recentLogs = logs.slice(-7);
+  return recentLogs.reduce(
+    (acc, log) => acc + (log.weeklyRecoveryBlockUsed ?? 0),
+    0
+  );
 }
 
 function getBestStudyPeriod(logs: StudyLog[]): StudyPeriod | null {
@@ -223,10 +251,12 @@ function buildAIAnalysis(logs: StudyLog[]): AIAnalysis | null {
   const completionRate = getCompletionRate(logs);
   const consistencyScore = getConsistencyScore(logs);
   const currentRiskLevel = getRiskLevel(consistencyScore, completionRate);
+  const weeklyRecoveryBlockUsed = getWeeklyRecoveryBlockUsed(logs);
 
   return {
     consistencyScore,
     completionRate,
+    weeklyRecoveryBlockUsed,
     currentRiskLevel,
     suggestedLoadFactor: getSuggestedLoadFactor(currentRiskLevel),
     bestStudyPeriod: getBestStudyPeriod(logs),

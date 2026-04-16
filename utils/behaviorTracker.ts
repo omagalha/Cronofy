@@ -9,6 +9,12 @@ export type UserStudyLog = {
   period?: StudyPeriod;
 };
 
+export interface IUserBehaviorMetrics {
+  consistencyScore: number;
+  averageCompletionRate: number;
+  weeklyRecoveryBlockUsed: number;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

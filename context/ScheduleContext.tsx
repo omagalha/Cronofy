@@ -9,9 +9,11 @@ import React, {
   useState,
 } from 'react';
 import {
+  AdaptivePlanningEngine,
   AdaptivePlanningResult,
   buildAdaptivePlan,
 } from '../utils/adaptivePlanningEngine';
+import { IReviewItem } from '../apps/shared/types/review';
 import {
   buildPersistedSchedule,
   completeBlock,
@@ -36,9 +38,23 @@ type ScheduleContextData = {
   isScheduleStale: boolean;
   generateScheduleFromSubjects: () => GenerateScheduleResult;
   refreshSchedule: () => GenerateScheduleResult;
-  completeBlockById: (blockId: string) => void;
+  completeBlockById: (
+    blockId: string,
+    payload?: {
+      mode?: 'focus' | 'review' | 'recovery';
+      interruptionCount?: number | null;
+      perceivedEnergyLevel?: number | null;
+      perceivedDifficulty?: number | null;
+      confidenceScore?: number | null;
+      completedAt?: string;
+    }
+  ) => void;
+  setPersistedScheduleState: (schedule: PersistedSchedule) => void;
   resetSchedule: () => void;
   clearSchedule: () => Promise<void>;
+  reviewQueue: IReviewItem[];
+  addReviewItem: (item: IReviewItem) => void;
+  updateReviewItem: (item: IReviewItem) => void;
   previewAdaptiveSchedule: ScheduleDay[];
   adaptiveSuggestions: AdaptivePlanningResult['suggestions'];
   adaptiveMetadata: AdaptivePlanningResult['metadata'] | null;
@@ -47,6 +63,7 @@ type ScheduleContextData = {
 
 const STORAGE_KEYS = {
   SCHEDULE: '@cronofy/schedule',
+  REVIEW_QUEUE: '@cronofy/review_queue_v1',
 };
 
 function isPersistedScheduleShape(value: unknown): value is PersistedSchedule {
@@ -153,6 +170,40 @@ function parseDurationToMinutes(duration: string | number): number {
   return Number.isNaN(numberOnly) ? 0 : numberOnly;
 }
 
+function mapScheduleDayToAdaptive(
+  day: ScheduleDay
+): import('../utils/adaptivePlanningEngine').ScheduleDay {
+  return {
+    date: day.day,
+    weekday: 'monday',
+    blocks: day.blocks.map((block) => ({
+      id: block.id,
+      subject: block.subject,
+      duration: parseDurationToMinutes(block.duration),
+      completed: Boolean(block.completed),
+    })),
+  };
+}
+
+function mapAdaptiveToScheduleDays(
+  source: import('../utils/adaptivePlanningEngine').ScheduleDay[],
+  fallback: ScheduleDay[]
+): ScheduleDay[] {
+  return fallback.map((day, dayIndex) => {
+    const adaptiveDay = source[dayIndex];
+    const updatedBlocks = day.blocks.map((block, blockIndex) => ({
+      ...block,
+      completed: adaptiveDay?.blocks?.[blockIndex]?.completed ?? block.completed,
+    }));
+
+    return {
+      ...day,
+      blocks: updatedBlocks,
+      completedBlocksCount: updatedBlocks.filter((block) => block.completed).length,
+    };
+  });
+}
+
 const ScheduleContext = createContext<ScheduleContextData | undefined>(undefined);
 
 type ScheduleProviderProps = {
@@ -165,6 +216,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
 
   const [persistedSchedule, setPersistedSchedule] =
     useState<PersistedSchedule | null>(null);
+  const [reviewQueue, setReviewQueue] = useState<IReviewItem[]>([]);
   const [isScheduleLoaded, setIsScheduleLoaded] = useState(false);
 
   const schedule = useMemo(() => persistedSchedule?.days ?? [], [persistedSchedule]);
@@ -179,7 +231,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   useEffect(() => {
     async function loadSchedule() {
       try {
-        const scheduleStored = await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE);
+        const [scheduleStored, reviewQueueStored] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE),
+          AsyncStorage.getItem(STORAGE_KEYS.REVIEW_QUEUE),
+        ]);
 
         if (!scheduleStored) {
           setIsScheduleLoaded(true);
@@ -201,6 +256,21 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
               },
             })
           );
+        }
+
+        if (reviewQueueStored) {
+          const parsedQueue = JSON.parse(reviewQueueStored) as unknown;
+          if (Array.isArray(parsedQueue)) {
+            setReviewQueue(
+              parsedQueue.filter(
+                (entry): entry is IReviewItem =>
+                  Boolean(entry) &&
+                  typeof entry === 'object' &&
+                  typeof (entry as IReviewItem).id === 'string' &&
+                  typeof (entry as IReviewItem).status === 'string'
+              )
+            );
+          }
         }
       } catch (error) {
         console.log('Erro ao carregar cronograma', error);
@@ -234,6 +304,37 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     persistSchedule();
   }, [persistedSchedule, isScheduleLoaded]);
 
+  useEffect(() => {
+    if (!isScheduleLoaded) return;
+
+    async function persistReviewQueue() {
+      try {
+        await AsyncStorage.setItem(
+          STORAGE_KEYS.REVIEW_QUEUE,
+          JSON.stringify(reviewQueue)
+        );
+      } catch (error) {
+        console.log('Erro ao salvar fila de revisões', error);
+      }
+    }
+
+    persistReviewQueue();
+  }, [reviewQueue, isScheduleLoaded]);
+
+  const addReviewItem = useCallback((item: IReviewItem) => {
+    setReviewQueue((prev) => [...prev, item]);
+  }, []);
+
+  const updateReviewItem = useCallback((item: IReviewItem) => {
+    setReviewQueue((prev) =>
+      prev.map((entry) => (entry.id === item.id ? item : entry))
+    );
+  }, []);
+
+  const setPersistedScheduleState = useCallback((schedule: PersistedSchedule) => {
+    setPersistedSchedule(schedule);
+  }, []);
+
   const generateScheduleFromSubjects = useCallback((): GenerateScheduleResult => {
     const validation = validateSetupBeforeSchedule(setupData);
 
@@ -261,10 +362,20 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   }, [generateScheduleFromSubjects]);
 
   const completeBlockById = useCallback(
-    (blockId: string) => {
+    (
+      blockId: string,
+      payload?: {
+        mode?: 'focus' | 'review' | 'recovery';
+        interruptionCount?: number | null;
+        perceivedEnergyLevel?: number | null;
+        perceivedDifficulty?: number | null;
+        confidenceScore?: number | null;
+        completedAt?: string;
+      }
+    ) => {
       if (!persistedSchedule) return;
 
-      const updatedSchedule = completeBlock(persistedSchedule, blockId);
+      const updatedSchedule = completeBlock(persistedSchedule, blockId, payload);
       setPersistedSchedule(updatedSchedule);
 
       if (!ai.isAIEnabled) return;
@@ -280,6 +391,20 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       );
 
       if (!completedBlock) return;
+
+      if ((payload?.mode ?? completedBlock.mode ?? 'focus') === 'focus') {
+        const engine = new AdaptivePlanningEngine();
+        const reviewItems = engine.createReviewItem({
+          id: completedBlock.id,
+          subject: completedBlock.subject,
+          duration: parseDurationToMinutes(completedBlock.duration),
+          completed: true,
+        });
+
+        if (reviewItems.length) {
+          setReviewQueue((prev) => [...prev, ...reviewItems]);
+        }
+      }
 
       const plannedBlocks = dayWithBlock.blocks.length;
       const completedBlocks = dayWithBlock.blocks.filter(
@@ -307,6 +432,12 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
         completedBlocks,
         subjects,
         timeStudied,
+        interruptionCount:
+          dayWithBlock.blocks.reduce(
+            (acc, block) => acc + (block.interruptionCount ?? 0),
+            0
+          ) ?? 0,
+        weeklyRecoveryBlockUsed: dayWithBlock.isRecoveryDay ? 1 : 0,
         period: getStudyPeriodFromTime(
           (completedBlock as ScheduleDay['blocks'][number] & { time?: string }).time
         ),
@@ -325,7 +456,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     if (!ai.studyLogs.length) return null;
 
     return buildAdaptivePlan({
-      schedule: persistedSchedule.days,
+      schedule: persistedSchedule.days.map(mapScheduleDayToAdaptive),
       studyLogs: ai.studyLogs,
       analysis: ai.aiAnalysis,
       setup: setupData,
@@ -340,7 +471,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   ]);
 
   const previewAdaptiveSchedule = useMemo(() => {
-    return adaptivePlan?.updatedSchedule ?? schedule;
+    if (!adaptivePlan) return schedule;
+    if (!persistedSchedule) return schedule;
+
+    return mapAdaptiveToScheduleDays(adaptivePlan.updatedSchedule, persistedSchedule.days);
   }, [adaptivePlan, schedule]);
 
   const adaptiveSuggestions = useMemo(() => {
@@ -356,7 +490,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
 
     const updatedPersistedSchedule: PersistedSchedule = {
       ...persistedSchedule,
-      days: adaptivePlan.updatedSchedule,
+      days: mapAdaptiveToScheduleDays(
+        adaptivePlan.updatedSchedule,
+        persistedSchedule.days
+      ),
       meta: {
         ...persistedSchedule.meta,
         generatedAt: new Date().toISOString(),
@@ -364,7 +501,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       },
       progress: normalizeProgressSnapshot(
         persistedSchedule.progress,
-        adaptivePlan.updatedSchedule
+        mapAdaptiveToScheduleDays(adaptivePlan.updatedSchedule, persistedSchedule.days)
       ),
     };
 
@@ -372,12 +509,18 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   }, [persistedSchedule, adaptivePlan]);
 
   const resetSchedule = useCallback(() => {
-    void AsyncStorage.removeItem(STORAGE_KEYS.SCHEDULE);
+    void AsyncStorage.multiRemove([
+      STORAGE_KEYS.SCHEDULE,
+      STORAGE_KEYS.REVIEW_QUEUE,
+    ]);
     setPersistedSchedule(null);
+    setReviewQueue([]);
   }, []);
 
   const clearSchedule = useCallback(async () => {
     resetSchedule();
+    await AsyncStorage.removeItem(STORAGE_KEYS.REVIEW_QUEUE);
+    setReviewQueue([]);
   }, [resetSchedule]);
 
   const value = useMemo(
@@ -389,8 +532,12 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      setPersistedScheduleState,
       resetSchedule,
       clearSchedule,
+      reviewQueue,
+      addReviewItem,
+      updateReviewItem,
       previewAdaptiveSchedule,
       adaptiveSuggestions,
       adaptiveMetadata,
@@ -404,8 +551,12 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       generateScheduleFromSubjects,
       refreshSchedule,
       completeBlockById,
+      setPersistedScheduleState,
       resetSchedule,
       clearSchedule,
+      reviewQueue,
+      addReviewItem,
+      updateReviewItem,
       previewAdaptiveSchedule,
       adaptiveSuggestions,
       adaptiveMetadata,
