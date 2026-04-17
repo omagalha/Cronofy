@@ -96,8 +96,8 @@ export default function PracticeScreen() {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Como isso entra no AprovAI</Text>
           <Text style={styles.infoText}>
-            A pratica agora nasce de um motivo claro: plano do dia, materia fraca
-            ou revisao rapida. Isso mantem o produto simples e cria sinal util para adaptacao.
+            A pratica agora nasce do bloco concluido, da materia fraca ou da revisao
+            pendente. O fluxo vira estudo, validacao e adaptacao sem criar um sistema paralelo.
           </Text>
         </View>
       </ScrollView>

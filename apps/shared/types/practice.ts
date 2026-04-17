@@ -48,6 +48,19 @@ export interface SubjectPerformance {
   trend: 'up' | 'down' | 'stable';
 }
 
+export interface SubjectPracticeSignal {
+  subject: string;
+  accuracy: number;
+  recentAccuracy: number;
+  totalQuestions: number;
+  trend: 'up' | 'down' | 'stable';
+  lastPracticedAt: string | null;
+  confidenceMismatch?: boolean;
+  recentConfidenceScore?: number | null;
+  recentDifficulty?: number | null;
+  linkedBlockCount?: number;
+}
+
 export interface PracticeSummary {
   totalSessions: number;
   totalQuestions: number;

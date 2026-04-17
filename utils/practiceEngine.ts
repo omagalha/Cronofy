@@ -7,6 +7,7 @@ import {
   PracticeSessionSource,
   PracticeSummary,
   QuestionResult,
+  SubjectPracticeSignal,
   SubjectPerformance,
 } from '../apps/shared/types/practice';
 import { ScheduleDay } from './scheduleEngine';
@@ -14,6 +15,7 @@ import { ScheduleDay } from './scheduleEngine';
 export interface BuildPracticeSessionInput {
   todaySchedule: ScheduleDay[];
   subjectPerformance: SubjectPerformance[];
+  practiceSessions?: PracticeSession[];
   aiAnalysis?: AIAnalysis | null;
   reviewQueue?: IReviewItem[];
   mode: PracticeBuildMode;
@@ -32,6 +34,8 @@ type SubjectCandidate = {
   source: PracticeSessionSource;
   blockIds: string[];
 };
+
+type ScheduleBlock = ScheduleDay['blocks'][number];
 
 type LegacyQuestion = {
   id?: string;
@@ -122,10 +126,65 @@ function getBlocksFromDays(days: ScheduleDay[]) {
   return days.flatMap((day) => day.blocks ?? []);
 }
 
+function getCompletedPracticeBlockIdsToday(
+  sessions: PracticeSession[] = []
+): Set<string> {
+  const todayDateKey = getLocalDateKey();
+
+  return new Set(
+    sessions
+      .filter(
+        (session) =>
+          session.status === 'completed' &&
+          session.finishedAt &&
+          getLocalDateKey(new Date(session.finishedAt)) === todayDateKey
+      )
+      .flatMap((session) => session.relatedBlockIds)
+  );
+}
+
 function getRelatedBlockIdsFromDays(days: ScheduleDay[], subject: string): string[] {
   return getBlocksFromDays(days)
     .filter((block) => normalizeText(normalizePracticeSubject(block.subject)) === normalizeText(subject))
     .map((block) => block.id);
+}
+
+function isValidationEligibleBlock(block: ScheduleBlock): boolean {
+  if (!block.completed) return false;
+  if ((block.mode ?? 'focus') === 'review') return false;
+  if (block.type === 'review') return false;
+  if (block.type === 'practice') return false;
+  return Boolean(normalizePracticeSubject(block.subject));
+}
+
+function getBlockValidationPriority(block: ScheduleBlock): number {
+  let score = 0;
+
+  if ((block.mode ?? 'focus') === 'focus') score += 4;
+  if ((block.type ?? 'new') === 'new') score += 3;
+  if ((block.confidenceScore ?? 0) >= 4) score += 2;
+  if ((block.perceivedDifficulty ?? 0) >= 4) score += 2;
+  if (block.reviewNote?.trim()) score += 1;
+  if (block.completedAt) score += 1;
+
+  return score;
+}
+
+function sortBlocksForValidation(a: ScheduleBlock, b: ScheduleBlock) {
+  const priorityDiff = getBlockValidationPriority(b) - getBlockValidationPriority(a);
+
+  if (priorityDiff !== 0) {
+    return priorityDiff;
+  }
+
+  const aCompletedAt = a.completedAt ?? '';
+  const bCompletedAt = b.completedAt ?? '';
+
+  if (aCompletedAt !== bCompletedAt) {
+    return bCompletedAt.localeCompare(aCompletedAt);
+  }
+
+  return a.id.localeCompare(b.id);
 }
 
 function getDailyPendingCandidate(todaySchedule: ScheduleDay[]): SubjectCandidate | null {
@@ -141,8 +200,15 @@ function getDailyPendingCandidate(todaySchedule: ScheduleDay[]): SubjectCandidat
   };
 }
 
-function getDailyStudiedCandidate(todaySchedule: ScheduleDay[]): SubjectCandidate | null {
-  const completedBlock = getBlocksFromDays(todaySchedule).find((block) => block.completed);
+function getDailyStudiedCandidate(
+  todaySchedule: ScheduleDay[],
+  practiceSessions: PracticeSession[] = []
+): SubjectCandidate | null {
+  const practicedBlockIdsToday = getCompletedPracticeBlockIdsToday(practiceSessions);
+  const completedBlock = getBlocksFromDays(todaySchedule)
+    .filter(isValidationEligibleBlock)
+    .sort(sortBlocksForValidation)
+    .find((block) => !practicedBlockIdsToday.has(block.id));
   const subject = normalizePracticeSubject(completedBlock?.subject);
 
   if (!subject) return null;
@@ -150,22 +216,24 @@ function getDailyStudiedCandidate(todaySchedule: ScheduleDay[]): SubjectCandidat
   return {
     subject,
     source: 'daily_plan',
-    blockIds: getRelatedBlockIdsFromDays(todaySchedule, subject),
+    blockIds: completedBlock ? [completedBlock.id] : [],
   };
 }
 
 function getLowConfidenceCandidate(todaySchedule: ScheduleDay[]): SubjectCandidate | null {
-  const lowConfidenceBlock = getBlocksFromDays(todaySchedule).find((block) => {
-    const confidence = block.confidenceScore ?? null;
-    const difficulty = block.perceivedDifficulty ?? null;
-    const hasReviewNote = Boolean(block.reviewNote?.trim());
+  const lowConfidenceBlock = getBlocksFromDays(todaySchedule)
+    .filter((block) => {
+      const confidence = block.confidenceScore ?? null;
+      const difficulty = block.perceivedDifficulty ?? null;
+      const hasReviewNote = Boolean(block.reviewNote?.trim());
 
-    return (
-      confidence !== null && confidence <= 2 ||
-      difficulty !== null && difficulty >= 4 ||
-      hasReviewNote
-    );
-  });
+      return (
+        (confidence !== null && confidence <= 2) ||
+        (difficulty !== null && difficulty >= 4) ||
+        hasReviewNote
+      );
+    })
+    .sort(sortBlocksForValidation)[0];
 
   const subject = normalizePracticeSubject(lowConfidenceBlock?.subject);
 
@@ -174,7 +242,7 @@ function getLowConfidenceCandidate(todaySchedule: ScheduleDay[]): SubjectCandida
   return {
     subject,
     source: 'revision_boost',
-    blockIds: getRelatedBlockIdsFromDays(todaySchedule, subject),
+    blockIds: lowConfidenceBlock ? [lowConfidenceBlock.id] : [],
   };
 }
 
@@ -256,7 +324,10 @@ function dedupeCandidates(candidates: Array<SubjectCandidate | null>): SubjectCa
 
 function getCandidateOrder(input: BuildPracticeSessionInput): SubjectCandidate[] {
   const dailyPending = getDailyPendingCandidate(input.todaySchedule);
-  const dailyStudied = getDailyStudiedCandidate(input.todaySchedule);
+  const dailyStudied = getDailyStudiedCandidate(
+    input.todaySchedule,
+    input.practiceSessions
+  );
   const lowConfidence = getLowConfidenceCandidate(input.todaySchedule);
   const weakSubject = getWeakSubjectCandidate(
     input.subjectPerformance,
@@ -284,9 +355,9 @@ function getCandidateOrder(input: BuildPracticeSessionInput): SubjectCandidate[]
     case 'daily':
     default:
       return dedupeCandidates([
-        dailyPending,
         dailyStudied,
         lowConfidence,
+        dailyPending,
         weakSubject,
         urgentReview,
       ]);
@@ -540,6 +611,69 @@ export function buildPracticeSummary(
   };
 }
 
+function getAverageValue(values: Array<number | null | undefined>): number | null {
+  const numericValues = values.filter(
+    (value): value is number => typeof value === 'number' && !Number.isNaN(value)
+  );
+
+  if (numericValues.length === 0) {
+    return null;
+  }
+
+  return Math.round(
+    numericValues.reduce((total, value) => total + value, 0) / numericValues.length
+  );
+}
+
+export function buildPracticeSignals(params: {
+  schedule: ScheduleDay[];
+  sessions: PracticeSession[];
+  subjectPerformance: SubjectPerformance[];
+}): SubjectPracticeSignal[] {
+  const completedSessions = params.sessions
+    .filter((session) => session.status === 'completed')
+    .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''));
+  const scheduleBlocksById = new Map(
+    params.schedule.flatMap((day) =>
+      (day.blocks ?? []).map((block) => [block.id, block] as const)
+    )
+  );
+
+  return params.subjectPerformance.map((item) => {
+    const recentSessions = completedSessions
+      .filter((session) => normalizeText(session.subject) === normalizeText(item.subject))
+      .slice(0, 2);
+    const relatedBlocks = recentSessions.flatMap((session) =>
+      session.relatedBlockIds
+        .map((blockId) => scheduleBlocksById.get(blockId))
+        .filter((block): block is ScheduleBlock => Boolean(block))
+    );
+    const recentConfidenceScore = getAverageValue(
+      relatedBlocks.map((block) => block.confidenceScore ?? null)
+    );
+    const recentDifficulty = getAverageValue(
+      relatedBlocks.map((block) => block.perceivedDifficulty ?? null)
+    );
+    const confidenceMismatch =
+      recentConfidenceScore !== null &&
+      recentConfidenceScore >= 4 &&
+      item.recentAccuracy <= 60;
+
+    return {
+      subject: item.subject,
+      accuracy: item.accuracy,
+      recentAccuracy: item.recentAccuracy,
+      totalQuestions: item.totalQuestions,
+      trend: item.trend,
+      lastPracticedAt: item.lastPracticedAt,
+      confidenceMismatch,
+      recentConfidenceScore,
+      recentDifficulty,
+      linkedBlockCount: relatedBlocks.length,
+    };
+  });
+}
+
 function mapRecommendationTitle(mode: PracticeBuildMode): string {
   switch (mode) {
     case 'weak_subject':
@@ -564,7 +698,7 @@ function mapRecommendationDescription(
         return 'A revisao rapida aparece quando existir fila pendente ou sinal de baixa confianca.';
       case 'daily':
       default:
-        return 'A pratica do dia usa materias pendentes ou estudadas hoje.';
+        return 'A pratica do dia aparece depois de um bloco concluido ou quando houver materia do dia pedindo consolidacao.';
     }
   }
 
@@ -575,7 +709,9 @@ function mapRecommendationDescription(
       return `Sessao curta para recuperar ${result.suggestedSubject} antes de esquecer.`;
     case 'daily':
     default:
-      return `Sessao curta conectada ao seu plano de hoje em ${result.suggestedSubject}.`;
+      return result.source === 'daily_plan' && result.suggestedBlockIds.length > 0
+        ? `Sessao curta para validar o bloco que voce acabou de estudar em ${result.suggestedSubject}.`
+        : `Sessao curta conectada ao seu plano de hoje em ${result.suggestedSubject}.`;
   }
 }
 
@@ -604,6 +740,7 @@ export function buildPracticeRecommendations(params: {
     const result = buildPracticeSession({
       todaySchedule,
       subjectPerformance: params.subjectPerformance,
+      practiceSessions: params.sessions,
       aiAnalysis: params.aiAnalysis,
       reviewQueue: params.reviewQueue,
       mode,

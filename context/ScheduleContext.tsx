@@ -8,11 +8,11 @@ import React, {
   useMemo,
   useState,
 } from 'react';
+import { SubjectPracticeSignal } from '../apps/shared/types/practice';
 import { IReviewItem } from '../apps/shared/types/review';
 import {
   AdaptivePlanningResult,
   buildAdaptivePlan,
-  SubjectPracticeSignal,
 } from '../utils/adaptivePlanningEngine';
 import { generateReviewsFromCompletedBlock, mergeReviewQueue } from '../utils/reviewEngine';
 import {

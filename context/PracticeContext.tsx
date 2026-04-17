@@ -14,23 +14,25 @@ import {
   PracticeRecommendation,
   PracticeSession,
   PracticeSummary,
+  SubjectPracticeSignal,
   SubjectPerformance,
 } from '../apps/shared/types/practice';
 import { useAIContext } from './AIContext';
 import { useScheduleContext } from './ScheduleContext';
 import {
   abandonPracticeSession,
+  buildPracticeSignals,
   buildPracticeRecommendations,
   buildPracticeSession,
   buildPracticeSummary,
   buildSubjectPerformance,
+  completePracticeSession,
   createPracticeSessionFromSuggestion,
   getTodayScheduleDays,
   isPracticeSession,
   migrateLegacyPracticeSession,
   registerQuestionResult,
 } from '../utils/practiceEngine';
-import type { SubjectPracticeSignal } from '../utils/adaptivePlanningEngine';
 
 type StartPracticeSessionOptions = {
   mode?: PracticeBuildMode;
@@ -77,7 +79,8 @@ const EMPTY_RECOMMENDATIONS: PracticeRecommendation[] = [
   {
     mode: 'daily',
     title: 'Pratica do dia',
-    description: 'A pratica do dia usa materias pendentes ou estudadas hoje.',
+    description:
+      'A pratica do dia aparece depois de um bloco concluido ou quando houver materia do dia pedindo consolidacao.',
     suggestedSubject: null,
     suggestedBlockIds: [],
     totalQuestions: 5,
@@ -238,15 +241,12 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   );
 
   const adaptivePracticeSignals = useMemo<SubjectPracticeSignal[]>(() => {
-    return subjectPerformance.map((item) => ({
-      subject: item.subject,
-      accuracy: item.accuracy,
-      recentAccuracy: item.recentAccuracy,
-      totalQuestions: item.totalQuestions,
-      trend: item.trend,
-      lastPracticedAt: item.lastPracticedAt,
-    }));
-  }, [subjectPerformance]);
+    return buildPracticeSignals({
+      schedule,
+      sessions: practiceSessions,
+      subjectPerformance,
+    });
+  }, [schedule, practiceSessions, subjectPerformance]);
 
   useEffect(() => {
     setPracticeSignals(adaptivePracticeSignals);
@@ -277,6 +277,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       const suggestion = buildPracticeSession({
         todaySchedule: getTodayScheduleDays(schedule),
         subjectPerformance,
+        practiceSessions,
         aiAnalysis,
         reviewQueue,
         mode,
@@ -291,7 +292,14 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       setCurrentPracticeSession(nextSession);
       return nextSession;
     },
-    [currentPracticeSession, schedule, subjectPerformance, aiAnalysis, reviewQueue]
+    [
+      currentPracticeSession,
+      schedule,
+      subjectPerformance,
+      practiceSessions,
+      aiAnalysis,
+      reviewQueue,
+    ]
   );
 
   const answerPracticeQuestion = useCallback(
@@ -307,35 +315,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const finishPracticeSession = useCallback(() => {
     if (!currentPracticeSession) return null;
 
-    const finishedAt = new Date().toISOString();
-    const completedSession = {
-      ...currentPracticeSession,
-      status: 'completed' as const,
-      finishedAt,
-      durationSeconds: Math.max(
-        0,
-        Math.round(
-          (new Date(finishedAt).getTime() - new Date(currentPracticeSession.startedAt).getTime()) /
-            1000
-        )
-      ),
-    };
-
-    const normalizedSession =
-      completedSession.questionResults.length < completedSession.totalQuestions
-        ? null
-        : {
-            ...completedSession,
-            correctAnswers: completedSession.questionResults.filter((item) => item.correct)
-              .length,
-            wrongAnswers: completedSession.questionResults.filter((item) => !item.correct)
-              .length,
-            accuracy: Math.round(
-              (completedSession.questionResults.filter((item) => item.correct).length /
-                completedSession.totalQuestions) *
-                100
-            ),
-          };
+    const normalizedSession = completePracticeSession(currentPracticeSession);
 
     if (!normalizedSession) {
       return null;

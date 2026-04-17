@@ -3,6 +3,7 @@ import type {
   BlockStatus,
   UserPhase,
 } from '../apps/shared/types/intelligence';
+import type { SubjectPracticeSignal } from '../apps/shared/types/practice';
 import type { IReviewItem } from '../apps/shared/types/review';
 import type { AIAnalysis, StudyLog } from '../context/AIContext';
 import { getDaysUntilExam, resolveUserPhase } from './phaseEngine';
@@ -92,15 +93,6 @@ export interface AdaptivePlanningResult {
     minimumRequiredProgress: number;
     userPhase: UserPhase;
   };
-}
-
-export interface SubjectPracticeSignal {
-  subject: string;
-  accuracy: number;
-  recentAccuracy: number;
-  totalQuestions: number;
-  trend: 'up' | 'down' | 'stable';
-  lastPracticedAt: string | null;
 }
 
 export interface BuildAdaptivePlanInput {
@@ -200,6 +192,19 @@ const normalizePracticeSignals = (
       totalQuestions: Math.max(0, signal.totalQuestions),
       accuracy: Math.max(0, Math.min(100, Math.round(signal.accuracy))),
       recentAccuracy: Math.max(0, Math.min(100, Math.round(signal.recentAccuracy))),
+      recentConfidenceScore:
+        typeof signal.recentConfidenceScore === 'number'
+          ? Math.max(0, Math.min(5, Math.round(signal.recentConfidenceScore)))
+          : null,
+      recentDifficulty:
+        typeof signal.recentDifficulty === 'number'
+          ? Math.max(0, Math.min(5, Math.round(signal.recentDifficulty)))
+          : null,
+      linkedBlockCount:
+        typeof signal.linkedBlockCount === 'number'
+          ? Math.max(0, Math.round(signal.linkedBlockCount))
+          : 0,
+      confidenceMismatch: Boolean(signal.confidenceMismatch),
     }));
 };
 
@@ -324,8 +329,14 @@ const getPracticeWeakSignal = (
   }
 
   const rankedSignals = [...meaningfulSignals].sort((a, b) => {
+    const aHasMismatch = a.confidenceMismatch ? 1 : 0;
+    const bHasMismatch = b.confidenceMismatch ? 1 : 0;
     const aIsFalling = a.trend === 'down' ? 1 : 0;
     const bIsFalling = b.trend === 'down' ? 1 : 0;
+
+    if (aHasMismatch !== bHasMismatch) {
+      return bHasMismatch - aHasMismatch;
+    }
 
     if (aIsFalling !== bIsFalling) {
       return bIsFalling - aIsFalling;
@@ -345,6 +356,7 @@ const getPracticeWeakSignal = (
   const weakestSignal = rankedSignals[0];
 
   if (
+    weakestSignal.confidenceMismatch ||
     weakestSignal.recentAccuracy <= LOW_PRACTICE_RECENT_ACCURACY ||
     weakestSignal.accuracy <= LOW_PRACTICE_ACCURACY ||
     weakestSignal.trend === 'down'
@@ -630,7 +642,11 @@ const getSyntheticReviewTargetFromPractice = (
     subject: weakSignal.subject,
     stage: 'reinforcement',
     priority:
-      weakSignal.recentAccuracy <= 50 || weakSignal.trend === 'down' ? 5 : 4,
+      weakSignal.confidenceMismatch ||
+      weakSignal.recentAccuracy <= 50 ||
+      weakSignal.trend === 'down'
+        ? 5
+        : 4,
   };
 };
 
