@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -69,11 +69,22 @@ export default function HomeScreen() {
     adaptiveSuggestions,
     applyAdaptivePlan,
   } = useAppContext();
+  const [adaptiveFeedback, setAdaptiveFeedback] = useState<string | null>(null);
 
   const todayIndex = new Date().getDay();
   const todayPt = weekDayMapPt[todayIndex];
   const todayEn = weekDayMapEn[todayIndex];
   const todayDate = getTodayDateKey();
+
+  useEffect(() => {
+    if (!adaptiveFeedback) return;
+
+    const timeout = setTimeout(() => {
+      setAdaptiveFeedback(null);
+    }, 2400);
+
+    return () => clearTimeout(timeout);
+  }, [adaptiveFeedback]);
 
   const scheduleDays = useMemo<ScheduleDay[]>(() => {
     if (Array.isArray(schedule)) return schedule as ScheduleDay[];
@@ -125,6 +136,11 @@ export default function HomeScreen() {
       ? 'Você está bem, mas precisa manter o ritmo.'
       : 'Seu plano está estável. Continue assim.';
 
+  const handleApplyAdaptivePlan = useCallback(() => {
+    applyAdaptivePlan();
+    setAdaptiveFeedback('Ajustes aplicados ao seu cronograma.');
+  }, [applyAdaptivePlan]);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -148,6 +164,19 @@ export default function HomeScreen() {
 
           <Text style={styles.heroSubtitle}>{riskMessage}</Text>
         </View>
+
+        {adaptiveSuggestions?.length > 0 && (
+          <View style={styles.adaptiveCardSlot}>
+            <AdaptiveSuggestionsCard
+              suggestions={adaptiveSuggestions}
+              onApply={handleApplyAdaptivePlan}
+            />
+
+            {adaptiveFeedback ? (
+              <Text style={styles.adaptiveFeedback}>{adaptiveFeedback}</Text>
+            ) : null}
+          </View>
+        )}
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
@@ -191,11 +220,6 @@ export default function HomeScreen() {
             </>
           )}
         </View>
-
-        <AdaptiveSuggestionsCard
-          suggestions={adaptiveSuggestions}
-          onApply={applyAdaptivePlan}
-        />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Progresso de consistência</Text>
@@ -340,6 +364,16 @@ const styles = StyleSheet.create({
     color: '#E0E7FF',
     marginTop: 8,
     lineHeight: 20,
+  },
+  adaptiveCardSlot: {
+    marginVertical: 4,
+    gap: 8,
+  },
+  adaptiveFeedback: {
+    color: '#A5B4FC',
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 4,
   },
 
   statsRow: {

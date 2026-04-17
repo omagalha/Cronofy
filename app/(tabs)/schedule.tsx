@@ -1,11 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -103,6 +107,12 @@ export default function ScheduleScreen() {
   const [difficulty, setDifficulty] = useState<DifficultyOption>('medium');
   const [confidence, setConfidence] = useState<ConfidenceOption>('medium');
   const [reviewNote, setReviewNote] = useState('');
+  const reviewNoteInputRef = useRef<TextInput | null>(null);
+
+  function dismissFeedbackKeyboard() {
+    reviewNoteInputRef.current?.blur();
+    Keyboard.dismiss();
+  }
 
   function openFeedbackModal(block: BlockItem) {
     setSelectedBlock(block);
@@ -113,6 +123,7 @@ export default function ScheduleScreen() {
   }
 
   function closeFeedbackModal() {
+    dismissFeedbackKeyboard();
     setFeedbackModalVisible(false);
     setSelectedBlock(null);
     setReviewNote('');
@@ -121,6 +132,8 @@ export default function ScheduleScreen() {
   }
 
   function handleConfirmBlock() {
+    dismissFeedbackKeyboard();
+
     if (!selectedBlock) return;
 
     completeBlockById(selectedBlock.id, {
@@ -339,8 +352,24 @@ export default function ScheduleScreen() {
         animationType="fade"
         onRequestClose={closeFeedbackModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableWithoutFeedback
+            onPress={dismissFeedbackKeyboard}
+            accessible={false}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  keyboardDismissMode={
+                    Platform.OS === 'ios' ? 'interactive' : 'on-drag'
+                  }
+                  contentContainerStyle={styles.modalScrollContent}
+                >
             <Text style={styles.modalEyebrow}>FINALIZAR BLOCO</Text>
             <Text style={styles.modalTitle}>Como foi esse bloco?</Text>
 
@@ -357,17 +386,26 @@ export default function ScheduleScreen() {
                 <OptionChip
                   label="Foi tranquilo"
                   active={difficulty === 'easy'}
-                  onPress={() => setDifficulty('easy')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setDifficulty('easy');
+                  }}
                 />
                 <OptionChip
                   label="Exigiu atenção"
                   active={difficulty === 'medium'}
-                  onPress={() => setDifficulty('medium')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setDifficulty('medium');
+                  }}
                 />
                 <OptionChip
                   label="Pegou bastante"
                   active={difficulty === 'hard'}
-                  onPress={() => setDifficulty('hard')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setDifficulty('hard');
+                  }}
                 />
               </View>
             </View>
@@ -378,17 +416,26 @@ export default function ScheduleScreen() {
                 <OptionChip
                   label="Entendi bem"
                   active={confidence === 'high'}
-                  onPress={() => setConfidence('high')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setConfidence('high');
+                  }}
                 />
                 <OptionChip
                   label="Entendi mais ou menos"
                   active={confidence === 'medium'}
-                  onPress={() => setConfidence('medium')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setConfidence('medium');
+                  }}
                 />
                 <OptionChip
                   label="Ainda estou inseguro"
                   active={confidence === 'low'}
-                  onPress={() => setConfidence('low')}
+                  onPress={() => {
+                    dismissFeedbackKeyboard();
+                    setConfidence('low');
+                  }}
                 />
               </View>
             </View>
@@ -396,12 +443,14 @@ export default function ScheduleScreen() {
             <View style={styles.modalSection}>
               <Text style={styles.modalSectionTitle}>Dúvida para revisar depois</Text>
               <TextInput
+                ref={reviewNoteInputRef}
                 style={styles.noteInput}
                 placeholder="Ex: regra de três, crase, interpretação de gráficos..."
                 placeholderTextColor="#64748B"
                 value={reviewNote}
                 onChangeText={setReviewNote}
                 multiline
+                blurOnSubmit
               />
             </View>
 
@@ -414,8 +463,11 @@ export default function ScheduleScreen() {
                 <Text style={styles.modalPrimaryButtonText}>Salvar e concluir</Text>
               </Pressable>
             </View>
-          </View>
-        </View>
+                </ScrollView>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -712,18 +764,27 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
+  modalRoot: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2,6,23,0.72)',
     justifyContent: 'center',
     paddingHorizontal: 20,
+    paddingVertical: 24,
   },
   modalCard: {
     backgroundColor: '#111C30',
     borderRadius: 24,
-    padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+    maxHeight: '88%',
+    overflow: 'hidden',
+  },
+  modalScrollContent: {
+    padding: 18,
+    flexGrow: 1,
   },
   modalEyebrow: {
     color: '#8FA1BC',
