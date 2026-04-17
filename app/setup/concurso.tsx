@@ -35,7 +35,7 @@ export default function ConcursoScreen() {
       step={1}
       totalSteps={7}
       title="Qual concurso você está mirando?"
-      subtitle="Isso ajuda o Cronofy a começar seu plano com mais contexto e organização."
+      subtitle="Isso ajuda o AprovAI a começar seu plano com mais contexto e organização."
       primaryLabel="Continuar"
       onPrimaryPress={handleContinue}
       secondaryLabel="Voltar"

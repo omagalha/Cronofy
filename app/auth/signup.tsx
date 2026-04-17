@@ -32,7 +32,7 @@ export default function SignupScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>Criar conta</Text>
         <Text style={styles.subtitle}>
-          Comece sua jornada no Cronofy com uma conta simples.
+          Comece sua jornada no AprovAI com uma conta simples.
         </Text>
 
         <View style={styles.form}>

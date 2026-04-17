@@ -43,7 +43,7 @@ export default function DisponibilidadeScreen() {
       step={5}
       totalSteps={7}
       title="Quanto tempo você tem por dia?"
-      subtitle="O Cronofy usa isso para definir quantos blocos cabem na sua rotina."
+      subtitle="O AprovAI usa isso para definir quantos blocos cabem na sua rotina."
       primaryLabel="Escolha uma opção"
       primaryDisabled
       secondaryLabel="Voltar"

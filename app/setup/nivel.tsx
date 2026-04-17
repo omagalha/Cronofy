@@ -39,7 +39,7 @@ export default function NivelScreen() {
       step={3}
       totalSteps={7}
       title="Qual é o seu nível hoje?"
-      subtitle="Isso ajuda o Cronofy a definir carga, duração dos blocos e ritmo inicial."
+      subtitle="Isso ajuda o AprovAI a definir carga, duração dos blocos e ritmo inicial."
       primaryLabel="Escolha uma opção"
       primaryDisabled
       secondaryLabel="Voltar"

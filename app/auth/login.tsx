@@ -50,7 +50,7 @@ export default function EntryScreen() {
               />
             </View>
             <View style={styles.brandTextWrap}>
-              <Text style={styles.brandTitle}>Cronofy</Text>
+              <Text style={styles.brandTitle}>AprovAI</Text>
               <Text style={styles.brandSubtitle}>
                 Seu plano de estudos inteligente
               </Text>
@@ -122,7 +122,7 @@ export default function EntryScreen() {
         </View>
 
         <View style={styles.benefitsSection}>
-          <Text style={styles.benefitsTitle}>Por que o Cronofy?</Text>
+          <Text style={styles.benefitsTitle}>Por que o AprovAI?</Text>
 
           <View style={styles.valueList}>
             {VALUE_POINTS.map((point) => (

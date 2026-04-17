@@ -87,7 +87,7 @@ export default function WidgetsPreviewScreen() {
       realSnapshot ??
       buildWidgetSnapshotFromAppContext({
         setupData: {
-          concurso: 'Cronofy',
+          concurso: 'AprovAI',
           examDate: null,
         },
         schedule: null,
@@ -100,7 +100,7 @@ export default function WidgetsPreviewScreen() {
         return {
           ...base,
           countdownRing: {
-            examTitle: 'Cronofy',
+            examTitle: 'AprovAI',
             daysLeft: null,
             progress: 0,
             status: 'empty',
@@ -109,12 +109,12 @@ export default function WidgetsPreviewScreen() {
             subject: 'Sem plano ativo',
             timeLabel: '--',
             duration: 0,
-            statusLabel: 'Cronofy',
+            statusLabel: 'AprovAI',
             state: 'empty',
           },
           aiDailySignal: {
             message: 'Estude hoje para ativar insights',
-            supportLabel: 'Cronofy',
+            supportLabel: 'AprovAI',
             riskLevel: 'empty',
           },
           updatedAt: new Date().toISOString(),
@@ -256,7 +256,7 @@ export default function WidgetsPreviewScreen() {
           <Text style={styles.eyebrow}>Widget Lab</Text>
           <Text style={styles.screenTitle}>Galeria de widgets</Text>
           <Text style={styles.screenSubtitle}>
-            Preview dos widgets reais do Cronofy em estados úteis de produto.
+            Preview dos widgets reais do AprovAI em estados úteis de produto.
           </Text>
         </View>
       </View>

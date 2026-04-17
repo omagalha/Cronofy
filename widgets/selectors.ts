@@ -55,7 +55,7 @@ const AI_SIGNAL_MESSAGES = {
   },
   empty: {
     message: 'Estude hoje para ativar insights',
-    supportLabel: 'Cronofy',
+    supportLabel: 'AprovAI',
   },
 } as const;
 
@@ -150,7 +150,7 @@ function getNextBlockStatusLabel(
     case 'done':
       return 'bom trabalho';
     case 'empty':
-      return 'Cronofy';
+      return 'AprovAI';
     default:
       return 'em breve';
   }
@@ -207,7 +207,7 @@ export function selectNextBlockWidget(
       subject: 'Sem plano ativo',
       timeLabel: '--',
       duration: 0,
-      statusLabel: 'Cronofy',
+      statusLabel: 'AprovAI',
       state: 'empty',
     };
   }

@@ -1,4 +1,4 @@
-# 🚀 Cronofy
+# 🚀 AprovAI
 
 Seu plano de estudos inteligente para concursos públicos.
 
@@ -6,7 +6,7 @@ Seu plano de estudos inteligente para concursos públicos.
 
 ## 🧠 Visão
 
-Cronofy é um app de organização de estudos com foco em:
+AprovAI é um app de organização de estudos com foco em:
 
 - entrada simples (sem fricção)
 - valor imediato (cronograma automático)

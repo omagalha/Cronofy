@@ -69,6 +69,13 @@ type ScheduleContextData = {
 };
 
 const STORAGE_KEYS = {
+  SCHEDULE: '@aprovai/schedule',
+  REVIEW_QUEUE: '@aprovai/review_queue_v1',
+  LEGACY_TEXT_CLEANUP: '@aprovai/legacy_text_cleanup_v1',
+};
+
+// Preserva dados e marcadores de versões anteriores durante a migração de branding.
+const LEGACY_STORAGE_KEYS = {
   SCHEDULE: '@cronofy/schedule',
   REVIEW_QUEUE: '@cronofy/review_queue_v1',
   LEGACY_TEXT_CLEANUP: '@cronofy/legacy_text_cleanup_v1',
@@ -656,17 +663,27 @@ function attachGeneratedReviewIds(
 }
 
 async function runLegacyScheduleCleanupOnce() {
-  const alreadyCleaned = await AsyncStorage.getItem(
-    STORAGE_KEYS.LEGACY_TEXT_CLEANUP
-  );
+  const [alreadyCleaned, legacyAlreadyCleaned] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.LEGACY_TEXT_CLEANUP),
+    AsyncStorage.getItem(LEGACY_STORAGE_KEYS.LEGACY_TEXT_CLEANUP),
+  ]);
 
-  if (alreadyCleaned) {
+  if (alreadyCleaned || legacyAlreadyCleaned) {
+    if (!alreadyCleaned && legacyAlreadyCleaned) {
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.LEGACY_TEXT_CLEANUP,
+        legacyAlreadyCleaned
+      );
+      await AsyncStorage.removeItem(LEGACY_STORAGE_KEYS.LEGACY_TEXT_CLEANUP);
+    }
     return;
   }
 
   await AsyncStorage.multiRemove([
     STORAGE_KEYS.SCHEDULE,
     STORAGE_KEYS.REVIEW_QUEUE,
+    LEGACY_STORAGE_KEYS.SCHEDULE,
+    LEGACY_STORAGE_KEYS.REVIEW_QUEUE,
   ]);
   await AsyncStorage.setItem(
     STORAGE_KEYS.LEGACY_TEXT_CLEANUP,
@@ -1003,6 +1020,8 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     void AsyncStorage.multiRemove([
       STORAGE_KEYS.SCHEDULE,
       STORAGE_KEYS.REVIEW_QUEUE,
+      LEGACY_STORAGE_KEYS.SCHEDULE,
+      LEGACY_STORAGE_KEYS.REVIEW_QUEUE,
     ]);
     setPersistedSchedule(null);
     setReviewQueue([]);
@@ -1010,7 +1029,10 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
 
   const clearSchedule = useCallback(async () => {
     resetSchedule();
-    await AsyncStorage.removeItem(STORAGE_KEYS.REVIEW_QUEUE);
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.REVIEW_QUEUE,
+      LEGACY_STORAGE_KEYS.REVIEW_QUEUE,
+    ]);
     setReviewQueue([]);
   }, [resetSchedule]);
 

@@ -37,7 +37,7 @@ function formatPreview(dateString: string): string {
   }
 
   if (days === 0) {
-    return 'Sua prova é hoje. O Cronofy vai priorizar urgência máxima.';
+    return 'Sua prova é hoje. O AprovAI vai priorizar urgência máxima.';
   }
 
   if (days <= 30) {
@@ -72,7 +72,7 @@ export default function DataProvaScreen() {
       step={2}
       totalSteps={7}
       title="Quando é sua prova?"
-      subtitle="Essa informação ajuda o Cronofy a calibrar urgência, ritmo e contagem regressiva."
+      subtitle="Essa informação ajuda o AprovAI a calibrar urgência, ritmo e contagem regressiva."
       primaryLabel="Continuar"
       onPrimaryPress={handleContinue}
       secondaryLabel="Pular por agora"

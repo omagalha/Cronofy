@@ -43,7 +43,7 @@ export default function FocoScreen() {
       step={4}
       totalSteps={7}
       title="Qual é o seu foco principal?"
-      subtitle="O Cronofy usa essa escolha para ajustar a estratégia do cronograma."
+      subtitle="O AprovAI usa essa escolha para ajustar a estratégia do cronograma."
       primaryLabel="Escolha uma opção"
       primaryDisabled
       secondaryLabel="Voltar"

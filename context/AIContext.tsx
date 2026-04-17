@@ -20,6 +20,13 @@ import {
 } from '../utils/predictionEngine';
 
 const STORAGE_KEYS = {
+  STUDY_LOGS: '@aprovai/study_logs_v2',
+  AI_ENABLED: '@aprovai/ai_enabled_v1',
+  STREAK: '@aprovai/streak_v1',
+};
+
+// Preserva dados de versões anteriores durante a migração de branding.
+const LEGACY_STORAGE_KEYS = {
   STUDY_LOGS: '@cronofy/study_logs_v2',
   AI_ENABLED: '@cronofy/ai_enabled_v1',
   STREAK: '@cronofy/streak_v1',
@@ -75,6 +82,18 @@ const DEFAULT_STREAK: StudyStreak = {
   bestStreak: 0,
   lastStudyDate: null,
 };
+
+async function getStoredValue(currentKey: string, legacyKey: string) {
+  const currentValue = await AsyncStorage.getItem(currentKey);
+  if (currentValue !== null) return currentValue;
+
+  const legacyValue = await AsyncStorage.getItem(legacyKey);
+  if (legacyValue === null) return null;
+
+  await AsyncStorage.setItem(currentKey, legacyValue);
+  await AsyncStorage.removeItem(legacyKey);
+  return legacyValue;
+}
 
 function isStudyLog(value: unknown): value is StudyLog {
   if (!value || typeof value !== 'object') return false;
@@ -319,9 +338,15 @@ export function AIProvider({ children }: { children: ReactNode }) {
     async function hydrateAI() {
       try {
         const [storedLogs, storedEnabled, storedStreak] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.STUDY_LOGS),
-          AsyncStorage.getItem(STORAGE_KEYS.AI_ENABLED),
-          AsyncStorage.getItem(STORAGE_KEYS.STREAK),
+          getStoredValue(
+            STORAGE_KEYS.STUDY_LOGS,
+            LEGACY_STORAGE_KEYS.STUDY_LOGS
+          ),
+          getStoredValue(
+            STORAGE_KEYS.AI_ENABLED,
+            LEGACY_STORAGE_KEYS.AI_ENABLED
+          ),
+          getStoredValue(STORAGE_KEYS.STREAK, LEGACY_STORAGE_KEYS.STREAK),
         ]);
 
         if (storedLogs) {
@@ -445,6 +470,9 @@ export function AIProvider({ children }: { children: ReactNode }) {
       STORAGE_KEYS.STUDY_LOGS,
       STORAGE_KEYS.STREAK,
       STORAGE_KEYS.AI_ENABLED,
+      LEGACY_STORAGE_KEYS.STUDY_LOGS,
+      LEGACY_STORAGE_KEYS.STREAK,
+      LEGACY_STORAGE_KEYS.AI_ENABLED,
     ]);
     setStudyLogs([]);
     setAIAnalysis(null);

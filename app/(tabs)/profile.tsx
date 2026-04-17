@@ -81,7 +81,7 @@ export default function ProfileScreen() {
           </View>
 
           <Text style={styles.heroTitle}>
-            {setupData?.concurso || 'Seu plano no Cronofy'}
+            {setupData?.concurso || 'Seu plano no AprovAI'}
           </Text>
 
           <Text style={styles.heroSubtitle}>

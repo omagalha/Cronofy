@@ -150,7 +150,7 @@ export default function HomeScreen() {
         <View style={styles.heroBig}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>Cronofy</Text>
+              <Text style={styles.heroBadgeText}>AprovAI</Text>
             </View>
 
             <View style={styles.riskPill}>

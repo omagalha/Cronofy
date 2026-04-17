@@ -82,7 +82,7 @@ export default function MateriasScreen() {
       step={7}
       totalSteps={7}
       title="Quais matérias entram no seu plano?"
-      subtitle="Adicione as matérias que o Cronofy vai distribuir no seu cronograma inicial."
+      subtitle="Adicione as matérias que o AprovAI vai distribuir no seu cronograma inicial."
       primaryLabel="Concluir setup"
       onPrimaryPress={handleContinue}
       primaryDisabled={selectedCount === 0}
@@ -173,7 +173,7 @@ export default function MateriasScreen() {
             <View style={styles.emptyStateCard}>
               <Text style={styles.emptyStateTitle}>Nada por aqui ainda</Text>
               <Text style={styles.emptyStateText}>
-                Adicione pelo menos uma matéria para o Cronofy montar seu plano.
+                Adicione pelo menos uma matéria para o AprovAI montar seu plano.
               </Text>
             </View>
           ) : (

@@ -26,6 +26,11 @@ type SetupContextData = {
 };
 
 const STORAGE_KEYS = {
+  SETUP: '@aprovai/setup',
+};
+
+// Preserva dados de versões anteriores durante a migração de branding.
+const LEGACY_STORAGE_KEYS = {
   SETUP: '@cronofy/setup',
 };
 
@@ -52,6 +57,18 @@ type SetupProviderProps = {
   children: ReactNode;
 };
 
+async function getStoredSetup() {
+  const currentSetup = await AsyncStorage.getItem(STORAGE_KEYS.SETUP);
+  if (currentSetup) return currentSetup;
+
+  const legacySetup = await AsyncStorage.getItem(LEGACY_STORAGE_KEYS.SETUP);
+  if (!legacySetup) return null;
+
+  await AsyncStorage.setItem(STORAGE_KEYS.SETUP, legacySetup);
+  await AsyncStorage.removeItem(LEGACY_STORAGE_KEYS.SETUP);
+  return legacySetup;
+}
+
 export function SetupProvider({ children }: SetupProviderProps) {
   const [setupData, setSetupData] = useState<UserSetupData>(initialSetupData);
   const [isSetupLoaded, setIsSetupLoaded] = useState(false);
@@ -59,7 +76,7 @@ export function SetupProvider({ children }: SetupProviderProps) {
   useEffect(() => {
     async function loadSetup() {
       try {
-        const setupStored = await AsyncStorage.getItem(STORAGE_KEYS.SETUP);
+        const setupStored = await getStoredSetup();
 
         if (!setupStored) {
           setIsSetupLoaded(true);
@@ -217,7 +234,10 @@ export function SetupProvider({ children }: SetupProviderProps) {
   }
 
   const resetSetup = useCallback(() => {
-    void AsyncStorage.removeItem(STORAGE_KEYS.SETUP);
+    void AsyncStorage.multiRemove([
+      STORAGE_KEYS.SETUP,
+      LEGACY_STORAGE_KEYS.SETUP,
+    ]);
     setSetupData({
       concurso: '',
       nivel: '',

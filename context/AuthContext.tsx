@@ -30,10 +30,27 @@ type AuthContextData = {
 };
 
 const STORAGE_KEYS = {
+  USER: '@aprovai/auth_user_v1',
+};
+
+// Preserva dados de versões anteriores durante a migração de branding.
+const LEGACY_STORAGE_KEYS = {
   USER: '@cronofy/auth_user_v1',
 };
 
 const AuthContext = createContext<AuthContextData | undefined>(undefined);
+
+async function getStoredUser() {
+  const currentUser = await AsyncStorage.getItem(STORAGE_KEYS.USER);
+  if (currentUser) return currentUser;
+
+  const legacyUser = await AsyncStorage.getItem(LEGACY_STORAGE_KEYS.USER);
+  if (!legacyUser) return null;
+
+  await AsyncStorage.setItem(STORAGE_KEYS.USER, legacyUser);
+  await AsyncStorage.removeItem(LEGACY_STORAGE_KEYS.USER);
+  return legacyUser;
+}
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -42,7 +59,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     async function hydrateAuth() {
       try {
-        const storedUser = await AsyncStorage.getItem(STORAGE_KEYS.USER);
+        const storedUser = await getStoredUser();
 
         if (storedUser) {
           const parsed = JSON.parse(storedUser) as AuthUser;
@@ -61,7 +78,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   async function persistUser(nextUser: AuthUser | null) {
     if (!nextUser) {
-      await AsyncStorage.removeItem(STORAGE_KEYS.USER);
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.USER,
+        LEGACY_STORAGE_KEYS.USER,
+      ]);
       return;
     }
 
@@ -72,7 +92,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const fakeUser: AuthUser = {
       id: 'google-user-1',
       name: 'Usuário Google',
-      email: 'google@cronofy.app',
+      email: 'google@aprovai.app',
       provider: 'google',
     };
 
@@ -84,7 +104,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const fakeUser: AuthUser = {
       id: 'apple-user-1',
       name: 'Usuário Apple',
-      email: 'apple@cronofy.app',
+      email: 'apple@aprovai.app',
       provider: 'apple',
     };
 

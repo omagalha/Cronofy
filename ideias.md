@@ -1,4 +1,4 @@
-Dá, e dá para subir bastante o nível do Cronofy com isso.
+Dá, e dá para subir bastante o nível do AprovAI com isso.
 
 Lendo os materiais, a melhor decisão não é “copiar dicas” para dentro do app. O certo é transformar o conteúdo em **camadas de inteligência operacional**: como o app monta o plano, como reage ao comportamento do usuário, como sugere revisão, como protege foco e como evita abandono. Os PDFs convergem bem nisso: Pomodoro como unidade de foco e gestão de interrupções, ciclos e revisões espaçadas para concurso, planejamento reverso com checkpoints e flexibilidade controlada.
 
@@ -10,13 +10,13 @@ O material do Alexandre Meirelles reforça algo muito importante para concurso: 
 
 O PDF de cronograma estratégico amarra isso numa lógica de produto muito boa: diagnóstico real da rotina, divisão equilibrada, personalização, flexibilidade controlada, bloco livre para recuperação/reforço, planejamento reverso a partir da prova, checkpoints periódicos e visualização clara da jornada.
 
-## Como isso vira inteligência do Cronofy
+## Como isso vira inteligência do AprovAI
 
 Eu transformaria isso em 6 motores.
 
 ### 1. Motor de foco
 
-O Cronofy deixa de ter só “duração de bloco” e passa a ter **modo de execução**.
+O AprovAI deixa de ter só “duração de bloco” e passa a ter **modo de execução**.
 
 Cada bloco do cronograma ganha:
 
@@ -40,7 +40,7 @@ Isso é ótimo para você como concurseiro porque o app deixa de ser só agenda 
 
 Esse é o pulo do gato.
 
-Pelos materiais, o Cronofy deveria registrar quando um tópico foi estudado e gerar revisões automáticas em janelas progressivas, com forte prioridade na primeira revisão em até 24 horas. O Meirelles destaca que essa primeira revisão é a mais crítica e que as revisões precisam ser espaçadas, não concentradas. 
+Pelos materiais, o AprovAI deveria registrar quando um tópico foi estudado e gerar revisões automáticas em janelas progressivas, com forte prioridade na primeira revisão em até 24 horas. O Meirelles destaca que essa primeira revisão é a mais crítica e que as revisões precisam ser espaçadas, não concentradas. 
 
 No app, eu modelaria assim:
 
@@ -62,7 +62,7 @@ Isso conversa muito bem com o seu `AIContext` e com o `AdaptivePlanningEngine`.
 
 O PDF do Meirelles é muito claro: não estudar uma matéria só por horas ou dias seguidos; revezar matérias, manter todas vivas na semana e alternar perfis cognitivos quando possível. Ele também diz que o ciclo pré-edital é excelente para não deixar disciplina para trás. 
 
-No Cronofy:
+No AprovAI:
 
 * o cronograma não deve ser uma agenda fixa rígida de horários; ele deve ser um **ciclo com ordem inteligente**
 * alternar:
@@ -80,7 +80,7 @@ Isso é muito melhor que um simples calendário estático.
 
 O PDF estratégico traz uma lógica que casa muito com concurso: partir da data da prova, quebrar o edital em tópicos, calcular tempo disponível, criar meta mínima de avanço e checkpoints.
 
-No Cronofy, isso deveria virar:
+No AprovAI, isso deveria virar:
 
 * `examDate`
 * `totalTopics`
@@ -123,7 +123,7 @@ Esse é exatamente o tipo de inteligência que faz o usuário sentir:
 
 Os PDFs convergem para uma ideia importante: estudar o máximo possível **sem quebrar a saúde**, respeitando nível, foco, base e capacidade real. O material estratégico sugere faixas por nível; o Meirelles insiste em volume progressivo; o Pomodoro reforça recuperação e pausa longa.
 
-No Cronofy:
+No AprovAI:
 
 * iniciante: menos volume, mais base
 * intermediário: equilíbrio
@@ -187,7 +187,7 @@ O app pode começar a dizer coisas úteis, tipo:
 
 ## Como isso te ajuda como concurseiro, além de dev
 
-Essa parte é importante: como você também vai usar o app, o Cronofy pode nascer já com uma lógica de uso real.
+Essa parte é importante: como você também vai usar o app, o AprovAI pode nascer já com uma lógica de uso real.
 
 Para você, eu pensaria o produto como:
 
@@ -208,7 +208,7 @@ Ou seja: o app não deve ser só “bonito”. Ele precisa atacar as dores reais
 
 Os PDFs que você mandou falam exatamente disso.
 
-## Minha proposta de implementação para o Cronofy
+## Minha proposta de implementação para o AprovAI
 
 Eu faria em 3 fases.
 
@@ -248,7 +248,7 @@ Na UI:
 
 O melhor próximo passo agora não é mais tela.
 
-É eu te entregar um **plano técnico de transformação desses conceitos em arquitetura do Cronofy**, com:
+É eu te entregar um **plano técnico de transformação desses conceitos em arquitetura do AprovAI**, com:
 
 * novos tipos
 * novos campos no schedule
@@ -258,7 +258,7 @@ O melhor próximo passo agora não é mais tela.
 
 Se você quiser, no próximo passo eu monto isso assim:
 
-**“Arquitetura v2 da inteligência do Cronofy”**
+**“Arquitetura v2 da inteligência do AprovAI”**
 
 com:
 

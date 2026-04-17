@@ -69,7 +69,7 @@ export default function AdaptiveSuggestionsCard({
       </View>
 
       <Text style={styles.subtitle}>
-        O Cronofy reorganizou sua semana para proteger constância e manter avanço
+        O AprovAI reorganizou sua semana para proteger constância e manter avanço
         real até a prova.
       </Text>
 

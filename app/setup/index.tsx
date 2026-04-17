@@ -105,14 +105,14 @@ export default function SetupIndexScreen() {
 
   function getProgressMessage() {
     if (completedSteps === 0) {
-      return 'Comece preenchendo seu setup para o Cronofy montar um plano real para você.';
+      return 'Comece preenchendo seu setup para o AprovAI montar um plano real para você.';
     }
 
     if (completedSteps < totalSteps) {
       return `${completedSteps} de ${totalSteps} etapas concluídas. Falta pouco para gerar seu cronograma.`;
     }
 
-    return 'Tudo pronto. Agora o Cronofy já pode montar seu cronograma inicial.';
+    return 'Tudo pronto. Agora o AprovAI já pode montar seu cronograma inicial.';
   }
 
   return (

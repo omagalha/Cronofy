@@ -11,19 +11,19 @@ import {
   getSuggestedLoadFactor,
 } from './predictionEngine';
 
-export type CronofyInsight = {
+export type AprovAIInsight = {
   type: 'consistency' | 'risk' | 'best_period' | 'load';
   title: string;
   message: string;
 };
 
-export type CronofyAIAnalysis = {
+export type AprovAIAnalysis = {
   consistencyScore: number;
   averageCompletionRate: number;
   failureRisk: FailureRisk;
   bestPeriod: 'morning' | 'afternoon' | 'night' | 'unknown';
   suggestedLoadFactor: number;
-  insights: CronofyInsight[];
+  insights: AprovAIInsight[];
 };
 
 function buildInsights(params: {
@@ -31,11 +31,11 @@ function buildInsights(params: {
   failureRisk: FailureRisk;
   bestPeriod: 'morning' | 'afternoon' | 'night' | 'unknown';
   suggestedLoadFactor: number;
-}): CronofyInsight[] {
+}): AprovAIInsight[] {
   const { consistencyScore, failureRisk, bestPeriod, suggestedLoadFactor } =
     params;
 
-  const insights: CronofyInsight[] = [
+  const insights: AprovAIInsight[] = [
     {
       type: 'consistency',
       title: 'Consistência',
@@ -79,7 +79,7 @@ function buildInsights(params: {
   return insights;
 }
 
-export function analyzeStudyHistory(logs: UserStudyLog[]): CronofyAIAnalysis {
+export function analyzeStudyHistory(logs: UserStudyLog[]): AprovAIAnalysis {
   const normalized = normalizeLogs(logs);
 
   const consistencyScore = getConsistencyScore(normalized);

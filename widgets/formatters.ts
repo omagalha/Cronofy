@@ -1,4 +1,4 @@
-const DEFAULT_EXAM_TITLE = 'Cronofy';
+const DEFAULT_EXAM_TITLE = 'AprovAI';
 
 export function clampPercent(value: number): number {
   if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
