@@ -1,363 +1,298 @@
-# 🚀 AprovAI
 
-Seu plano de estudos inteligente para concursos públicos.
+# 📁 AprovAI — Estrutura do Projeto
 
----
+Este documento descreve a estrutura do AprovAI, um sistema inteligente de preparação para concursos públicos.
 
-## 🧠 Visão
+A arquitetura foi pensada para:
 
-AprovAI é um app de organização de estudos com foco em:
-
-- entrada simples (sem fricção)
-- valor imediato (cronograma automático)
-- execução real (concluir blocos)
-- progresso visível
-- senso de urgência (data da prova)
-- evolução futura para IA adaptativa
-
-O app deve parecer:
-- simples
-- premium
-- limpo
-- funcional desde o primeiro uso
-- sem poluição visual
+- escalabilidade
+- separação de responsabilidades
+- evolução incremental
+- clareza de domínio
+- baixo acoplamento
 
 ---
 
-## 🧱 Arquitetura
+# 🧠 Visão geral
 
-### 📁 Estrutura
+O sistema é dividido em camadas principais:
+
+- UI (app/)
+- Contextos (context/)
+- Domínio compartilhado (apps/shared/)
+- Engines (utils/)
+- Componentes (components/)
+- Dados locais (data/)
+- Infra de widgets (widgets/)
+
+---
+
+# 📱 Estrutura de diretórios
+
+## app/
+
+Responsável pelas telas e navegação (Expo Router)
+
+```
 
 app/
-  index.tsx
-  _layout.tsx
+(tabs)/
+_layout.tsx           # Tab bar principal
 
-  home.tsx
-  schedule.tsx
+```
+home.tsx              # Painel inteligente (centro do app)
+schedule.tsx          # Cronograma e execução
+practice.tsx          # Sessões de prática
+insights.tsx          # Análises e métricas
+profile.tsx           # Perfil do usuário
+```
 
-  auth/
-    login.tsx
-    signin.tsx
+practice/
+session.tsx           # Execução da prática (questões)
+result.tsx            # Resultado da sessão
 
-  setup/
-    index.tsx
-    concurso.tsx
-    data-prova.tsx
-    nivel.tsx
-    foco.tsx
-    disponibilidade.tsx
-    dias.tsx
-    materias.tsx
+setup/
+index.tsx             # Onboarding inicial
+
+auth/
+login.tsx             # Login (se aplicável)
+
+```
+
+---
+
+## context/
+
+Responsável pelo estado global e lógica de domínio
+
+```
 
 context/
-  SetupContext.tsx
-  ScheduleContext.tsx
-  AppProvider.tsx
-  AppContext.tsx
+AppProvider.tsx         # Composição de todos os providers
+AppContext.tsx          # Fachada unificada
 
-components/
-  ui/
-    ProgressRing.tsx
-    SubjectProgressCard.tsx
-    CountdownWidget.tsx
+SetupContext.tsx        # Dados do usuário (objetivo, prova, etc)
+ScheduleContext.tsx     # Cronograma + execução + adaptação
+AIContext.tsx           # Análise comportamental
+PracticeContext.tsx     # Sessões de prática e desempenho
+
+```
+
+---
+
+## apps/shared/
+
+Domínio compartilhado entre camadas
+
+```
+
+apps/
+shared/
+types/
+
+```
+  schedule.ts         # Tipos de cronograma
+  practice.ts         # Tipos de prática
+  review.ts           # Tipos de revisão
+  intelligence.ts     # Tipos de IA
+
+  questionBank.ts     # Tipos do banco de questões
+```
+
+```
+
+---
+
+## utils/
+
+Engines e lógica de negócio (coração do sistema)
+
+```
 
 utils/
-  scheduleEngine.ts
-  examDate.ts
+scheduleEngine.ts           # Geração inicial do cronograma
+adaptivePlanningEngine.ts   # Ajustes automáticos do plano
+reviewEngine.ts             # Criação de revisões
+behaviorTracker.ts          # Consistência e padrões
+predictionEngine.ts         # Risco e carga sugerida
+
+practiceEngine.ts           # Criação de sessões de prática
+questionBankEngine.ts       # Seleção de questões
+
+progressEngine.ts           # Progresso esperado vs real
+phaseEngine.ts              # Fase do usuário (ritmo, sprint, etc)
+
+```
 
 ---
 
-## 🔥 Regras de Organização
+## components/
 
-- app/ → telas
-- context/ → estado global
-- utils/ → regras de negócio
-- components/ui → UI reutilizável
+Componentes reutilizáveis de UI
 
-❌ NÃO colocar lógica nas telas  
-❌ NÃO duplicar lógica fora do engine  
+```
 
----
+components/
 
-## 🧠 Contextos
+practice/
+PracticeHeroCard.tsx
+PracticeSessionCard.tsx
+PracticeResultCard.tsx
+SubjectPerformanceCard.tsx
 
-### SetupContext
-- setupData
-- matérias
-- dias disponíveis
-- persistência
+widgets/
+CountdownRingCard.tsx
+NextBlockCard.tsx
+AIDailySignalCard.tsx
+DailyPracticeCard.tsx
+WeakSubjectCard.tsx
 
-### ScheduleContext
-- schedule
-- persistedSchedule
-- isScheduleStale
-- refreshSchedule
-- completeBlockById
+ui/
+Button.tsx
+Card.tsx
+ProgressBar.tsx
 
-### AppContext
-- ponte de consumo
-- useAppContext()
+```
 
 ---
 
-## 🧠 Estado Global
+## widgets/
 
-UserSetupData = {
-  concurso: string
-  examDate: string
-  nivel: string
-  foco: string
-  disponibilidade: string
-  materias: string[]
-  diasDisponiveis: string[]
-}
+Infraestrutura de widgets desacoplados
 
----
+```
 
-## 🧠 Cronograma
+widgets/
+snapshot.ts             # Snapshot do estado global
+fromAppContext.ts       # Conversão de contexto → widget
+selectors.ts            # Seletores de dados
+types.ts                # Tipos dos widgets
 
-StudyBlock = {
-  id: string
-  subject: string
-  time: string
-  duration: string
-  type?: 'new' | 'review' | 'practice'
-  tip?: string
-  completed?: boolean
-  completedAt?: string
-}
+```
 
 ---
 
-## 🔁 Persistência
+## data/
 
-- AsyncStorage
-- salvar setup + schedule
-- restaurar ao abrir
+Dados locais do app (seed inicial)
 
----
+```
 
-## 🧠 Cronograma Resiliente
+data/
+questions/
+seed/
 
-Engine controla:
+```
+  portuguese.json
+  logical-reasoning.json
+  constitutional-law.json
+  administrative-law.json
+```
 
-- createSetupHash
-- buildPersistedSchedule
-- isScheduleOutdated
-
-Se setup mudar:
-→ cronograma fica desatualizado
-
-UX:
-→ mostrar aviso
-→ permitir atualizar
+```
 
 ---
 
-## 📅 Regras do Cronograma
+# 🧠 Fluxo do sistema
 
-Blocos:
-- até 1h → 1
-- 1–2h → 2
-- 2–4h → 3
-- +4h → 4
+O AprovAI opera em um ciclo contínuo:
 
-Duração:
-- iniciante → 45min
-- intermediário → 1h
-- avançado → 1h30
+```
 
-Foco:
-- rápida → rotação
-- base → equilíbrio
-- revisão → adiciona review
-- constância → limita blocos
+onboarding → cronograma → execução → prática → adaptação
+
+```
 
 ---
 
-## ✅ Execução
+## 🔄 Integração entre camadas
 
-completeBlock:
-- marca bloco como concluído
-- salva completed + completedAt
+### Execução
 
----
+- usuário conclui bloco
+- ScheduleContext registra
+- AIContext analisa comportamento
 
-## 📊 Progresso por Matéria
+### Prática
 
-getSubjectProgressMap(schedule)
+- PracticeContext cria sessão
+- practiceEngine define foco
+- questionBankEngine entrega questões
 
-- calcula % concluído
-- agrupa revisão com matéria original
+### Resultado
 
-UI:
-- SubjectProgressCard
-- ProgressRing
+- respostas geram QuestionResult
+- SubjectPerformance é atualizado
+- practiceSignals são gerados
 
----
+### Adaptação
 
-## 🎨 Progress Ring
-
-- círculo oco
-- borda fina
-- discreto
-- premium
-
----
-
-## ⏳ Data da Prova
-
-campo:
-examDate: string
-
-formato:
-YYYY-MM-DD
+- ScheduleContext chama adaptivePlanningEngine
+- sistema ajusta:
+  - carga
+  - revisões
+  - foco por matéria
 
 ---
 
-## 🧠 examDate.ts
+# 📊 Papel da Home
 
-- getDaysUntilExam
-- formatExamDate
-- getCountdownLabel
-- getCountdownTone
+A Home é o centro do sistema.
 
----
+Ela exibe:
 
-## 🚀 Countdown Widget
-
-Mostra:
-- dias restantes
-- data da prova
-- estado de urgência
-
-Estados:
-- >90 dias → neutro
-- 30–90 → warning
-- <30 → urgente
-- hoje → "A prova é hoje"
-- vazio → "Defina a data da prova"
-
----
-
-## 📱 Home Screen
-
-Ordem:
-
-Header  
-Countdown  
-Aviso stale  
-Hero  
-Stats  
-Resumo  
-Progresso  
-Blocos  
-Botões  
-
----
-
-### Hero
-
-Mostra:
-- dia atual
-- próximo bloco NÃO concluído
-
-Estados:
 - próximo bloco
-- tudo concluído
-- vazio
+- sinal da IA
+- prática sugerida
+- matéria mais fraca
+- progresso real
 
 ---
 
-### Stats
+# 🧪 Papel da Prática
 
-- matérias
-- concluídos
-- blocos
+A prática NÃO é um módulo isolado.
 
----
+Ela é um **sensor do sistema**.
 
-### Resumo
+Responsável por:
 
-- concurso
-- prova
-- nível
-- foco
-- disponibilidade
+- validar aprendizado
+- detectar inconsistência
+- alimentar adaptação
 
 ---
 
-### Progresso
+# ⚠️ Decisões arquiteturais importantes
 
-- lista de matérias
-- % concluído
-- círculo visual
-
----
-
-### Blocos
-
-- subject
-- horário
-- duração
-- tip
-- botão concluir
+- lógica de negócio fora da UI  
+- contextos separados por responsabilidade  
+- engines puras (sem dependência de UI)  
+- dados persistidos localmente (AsyncStorage)  
+- widgets desacoplados da navegação  
 
 ---
 
-## 🔐 Login
+# 🚀 Evolução futura (planejada)
 
-- opcional
-- só depois de valor entregue
-
----
-
-## 💎 Free vs Pro
-
-Free:
-- cronograma
-- execução
-- progresso
-- countdown
-
-Pro:
-- IA
-- insights
-- análise
-- sugestões
+- otimização do question bank  
+- melhoria da UX da prática  
+- refinamento da adaptação  
+- possível backend (quando necessário)  
 
 ---
 
-## 🎯 Estratégia
+# 🧠 Conclusão
 
-1. entrar sem fricção  
-2. gerar valor  
-3. engajar  
-4. salvar progresso  
-5. monetizar  
+O AprovAI não é apenas um app.
 
----
+Ele é um sistema que:
 
-## ⚠️ Regras IMPORTANTES
+- organiza  
+- orienta  
+- valida  
+- adapta  
+- evolui com o usuário  
 
-- NÃO travar usuário
-- NÃO paywall agressivo
-- SEMPRE mostrar valor antes
-- lógica no engine
-- UI limpa e premium
-
----
-
-## 🔮 Futuro
-
-- Firebase Auth
-- sync na nuvem
-- IA adaptativa
-- streak
-- dashboard
-
----
-
-## 🧠 Filosofia
-
-Simples → funcional → escalável → inteligente
+Essa estrutura garante base sólida para crescimento sem perda de controle arquitetural.
+```

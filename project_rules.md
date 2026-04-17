@@ -1,1081 +1,237 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+📱 CONTEXTO DO PRODUTO
 
-import { useAppContext } from '../../context/AppContext';
-import { buildWidgetSnapshotFromAppContext } from '../../widgets/fromAppContext';
-import { saveWidgetSnapshot } from '../../widgets/storage';
-import { WidgetSnapshot } from '../../widgets/types';
+O AprovAI é um sistema inteligente de preparação para concursos públicos.
 
-type PreviewMode = 'real' | 'focused' | 'empty' | 'highRisk' | 'done';
+Ele NÃO é um organizador comum.
 
-type AppContextPreviewSource = {
-  setupData?: {
-    concurso?: string;
-    examDate?: string;
-  } | null;
-  schedule?: unknown;
-  persistedSchedule?: unknown;
-  aiAnalysis?: {
-    currentRiskLevel?: 'low' | 'medium' | 'high';
-    bestStudyPeriod?: string | null;
-    hardestSubject?: string | null;
-    suggestedLoadFactor?: number;
-  } | null;
-  streak?: {
-    currentStreak: number;
-    bestStreak: number;
-  };
-};
+Ele deve:
 
-export default function WidgetsPreviewScreen() {
-  const {
-    setupData,
-    schedule,
-    persistedSchedule,
-    aiAnalysis,
-    streak,
-  } = useAppContext();
+organizar o estudo
+guiar o que fazer no dia
+medir consistência
+validar aprendizado com prática
+adaptar automaticamente o plano
+reduzir culpa do usuário
+aumentar constância
+maximizar chance de aprovação
+🧠 FILOSOFIA DO PRODUTO
+constância > intensidade
+adaptação > rigidez
+sistema > motivação
+progresso real > volume ilusório
+🏗️ BASE ATUAL DO SISTEMA
 
-  const [mode, setMode] = useState<PreviewMode>('real');
+O app já existe e está estruturado com:
 
-  const appSnapshotSource = useMemo<AppContextPreviewSource>(
-    () => ({
-      setupData: setupData
-        ? {
-            concurso: setupData.concurso,
-            examDate: setupData.examDate,
-          }
-        : null,
-      schedule,
-      persistedSchedule,
-      aiAnalysis: aiAnalysis
-        ? {
-            currentRiskLevel: aiAnalysis.currentRiskLevel,
-            bestStudyPeriod: aiAnalysis.bestStudyPeriod,
-            hardestSubject: aiAnalysis.hardestSubject,
-            suggestedLoadFactor: aiAnalysis.suggestedLoadFactor,
-          }
-        : null,
-      streak,
-    }),
-    [setupData, schedule, persistedSchedule, aiAnalysis, streak]
-  );
+Stack:
 
-  const realSnapshot = useMemo<WidgetSnapshot | null>(() => {
-    try {
-      return buildWidgetSnapshotFromAppContext(appSnapshotSource);
-    } catch (error) {
-      console.warn('Erro ao montar widget snapshot real', error);
-      return null;
-    }
-  }, [appSnapshotSource]);
+React Native (Expo Router)
+TypeScript
+AsyncStorage
 
-  useEffect(() => {
-    if (!realSnapshot) return;
-    saveWidgetSnapshot(realSnapshot);
-  }, [realSnapshot]);
+Arquitetura:
 
-  const snapshot = useMemo<WidgetSnapshot>(() => {
-    const base =
-      realSnapshot ??
-      buildWidgetSnapshotFromAppContext({
-        setupData: {
-          concurso: 'AprovAI',
-          examDate: null,
-        },
-        schedule: null,
-        persistedSchedule: null,
-        aiAnalysis: null,
-      });
+SetupContext
+ScheduleContext
+AIContext
+PracticeContext
+AppContext (fachada)
 
-    switch (mode) {
-      case 'empty':
-        return {
-          ...base,
-          countdownRing: {
-            examTitle: 'AprovAI',
-            daysLeft: null,
-            progress: 0,
-            status: 'empty',
-          },
-          nextBlock: {
-            subject: 'Sem plano ativo',
-            timeLabel: '--',
-            duration: 0,
-            statusLabel: 'AprovAI',
-            state: 'empty',
-          },
-          aiDailySignal: {
-            message: 'Estude hoje para ativar insights',
-            supportLabel: 'AprovAI',
-            riskLevel: 'empty',
-          },
-          updatedAt: new Date().toISOString(),
-        };
+Engines:
 
-      case 'highRisk':
-        return {
-          ...base,
-          countdownRing: {
-            examTitle: base.countdownRing.examTitle || 'Concurso',
-            daysLeft:
-              typeof base.countdownRing.daysLeft === 'number'
-                ? Math.max(base.countdownRing.daysLeft, 12)
-                : 12,
-            progress:
-              typeof base.countdownRing.progress === 'number'
-                ? Math.max(base.countdownRing.progress, 88)
-                : 88,
-            status: 'active',
-          },
-          nextBlock: {
-            subject: 'Português',
-            timeLabel: '19:00 • 30 min',
-            duration: 30,
-            statusLabel: 'em breve',
-            state: 'upcoming',
-          },
-          aiDailySignal: {
-            message: 'Reduza a carga hoje',
-            supportLabel: 'risco alto',
-            riskLevel: 'high',
-          },
-          updatedAt: new Date().toISOString(),
-        };
+scheduleEngine
+adaptivePlanningEngine
+reviewEngine
+behaviorTracker
+predictionEngine
 
-      case 'done':
-        return {
-          ...base,
-          nextBlock: {
-            subject: 'Dia concluído',
-            timeLabel: 'Tudo certo por hoje',
-            duration: 0,
-            statusLabel: 'bom trabalho',
-            state: 'done',
-          },
-          aiDailySignal: {
-            message: 'Boa consistência hoje',
-            supportLabel: 'plano do dia concluído',
-            riskLevel: 'low',
-          },
-          updatedAt: new Date().toISOString(),
-        };
+Funcionalidades já existentes:
 
-      case 'focused':
-        return {
-          ...base,
-          nextBlock: {
-            subject: 'Matemática',
-            timeLabel: '08:00 • 45 min',
-            duration: 45,
-            statusLabel: 'hora ideal',
-            state: 'ideal',
-          },
-          aiDailySignal: {
-            message: 'Você está bem hoje',
-            supportLabel: 'boa janela de estudo',
-            riskLevel: 'low',
-          },
-          updatedAt: new Date().toISOString(),
-        };
+cronograma automático
+execução de blocos
+feedback de dificuldade e confiança
+sistema adaptativo
+análise de comportamento
+prática (estrutura inicial já criada)
+Home como painel inteligente
+widgets desacoplados via snapshot
+📦 REPOSITÓRIOS DE REFERÊNCIA
 
-      case 'real':
-      default:
-        return base;
-    }
-  }, [mode, realSnapshot]);
+Projeto principal (AprovAI):
+https://github.com/omagalha/Cronofy
 
-  const riskTone = getRiskTone(snapshot.aiDailySignal.riskLevel);
+Base de questões (referência):
+https://github.com/rodrigoborgesmachado/questoesConcursos/tree/main/public
 
-  const previewStats = useMemo(() => {
-    switch (mode) {
-      case 'empty':
-        return {
-          streakCurrent: 0,
-          streakBest: 0,
-          completed: 0,
-          total: 0,
-          percent: 0,
-        };
-      case 'done':
-        return {
-          streakCurrent: Math.max(streak?.currentStreak ?? 0, 12),
-          streakBest: Math.max(streak?.bestStreak ?? 0, 18),
-          completed: 4,
-          total: 4,
-          percent: 100,
-        };
-      case 'focused':
-        return {
-          streakCurrent: Math.max(streak?.currentStreak ?? 0, 5),
-          streakBest: Math.max(streak?.bestStreak ?? 0, 11),
-          completed: 1,
-          total: 4,
-          percent: 25,
-        };
-      case 'highRisk':
-        return {
-          streakCurrent: Math.max((streak?.currentStreak ?? 1) - 1, 1),
-          streakBest: Math.max(streak?.bestStreak ?? 0, 9),
-          completed: 1,
-          total: 4,
-          percent: 25,
-        };
-      case 'real':
-      default:
-        return {
-          streakCurrent: streak?.currentStreak ?? 0,
-          streakBest: streak?.bestStreak ?? 0,
-          completed: snapshot.nextBlock.state === 'done' ? 4 : 2,
-          total: snapshot.nextBlock.state === 'empty' ? 0 : 4,
-          percent:
-            snapshot.nextBlock.state === 'done'
-              ? 100
-              : snapshot.nextBlock.state === 'empty'
-              ? 0
-              : 50,
-        };
-    }
-  }, [mode, snapshot.nextBlock.state, streak]);
+🚀 NOVA MISSÃO
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.eyebrow}>Widget Lab</Text>
-          <Text style={styles.screenTitle}>Galeria de widgets</Text>
-          <Text style={styles.screenSubtitle}>
-            Preview dos widgets reais do AprovAI em estados úteis de produto.
-          </Text>
-        </View>
-      </View>
+Transformar o AprovAI em um sistema completo com:
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.toggleRow}
-      >
-        <ModeChip
-          label="Real"
-          active={mode === 'real'}
-          onPress={() => setMode('real')}
-        />
-        <ModeChip
-          label="Focused"
-          active={mode === 'focused'}
-          onPress={() => setMode('focused')}
-        />
-        <ModeChip
-          label="Empty"
-          active={mode === 'empty'}
-          onPress={() => setMode('empty')}
-        />
-        <ModeChip
-          label="High Risk"
-          active={mode === 'highRisk'}
-          onPress={() => setMode('highRisk')}
-        />
-        <ModeChip
-          label="Done"
-          active={mode === 'done'}
-          onPress={() => setMode('done')}
-        />
-      </ScrollView>
+👉 estudo + prática + adaptação automática
 
-      <SectionHeader
-        title="Small"
-        subtitle="Glanceable, direto e nativo"
-      />
+⚠️ PONTO CRÍTICO
 
-      <View style={styles.smallGrid}>
-        <CountdownRingWidget
-          title="🎯 Prova"
-          daysLeft={snapshot.countdownRing.daysLeft}
-          examTitle={snapshot.countdownRing.examTitle}
-          progress={snapshot.countdownRing.progress}
-          tone={countdownToneFromStatus(snapshot.countdownRing.status)}
-        />
+A prática NÃO é uma feature isolada.
 
-        <StreakPulseWidget
-          title="🔥 Streak"
-          current={previewStats.streakCurrent}
-          best={previewStats.streakBest}
-        />
-      </View>
+Ela é:
 
-      <SectionHeader
-        title="Medium"
-        subtitle="Ação, contexto e status"
-      />
+👉 um SENSOR do sistema
 
-      <View style={styles.stack}>
-        <NextBlockWidget snapshot={snapshot} />
-        <TodayProgressWidget
-          completed={previewStats.completed}
-          total={previewStats.total}
-          percent={previewStats.percent}
-        />
-        <AIWidget snapshot={snapshot} tone={riskTone} />
-      </View>
+Ela serve para:
 
-      <SectionHeader
-        title="Large"
-        subtitle="Editorial, inteligente e premium"
-      />
+validar aprendizado real
+detectar inconsistência (confiança vs desempenho)
+alimentar adaptação automática
+🎯 OBJETIVO ATUAL
 
-      <View style={styles.stack}>
-        <DayBoardLargeWidget
-          snapshot={snapshot}
-          progressPercent={previewStats.percent}
-          completed={previewStats.completed}
-          total={previewStats.total}
-          tone={riskTone}
-        />
-      </View>
-    </ScrollView>
-  );
+Criar a base de um sistema de questões dentro do AprovAI, usando o segundo repositório como referência.
+
+🧱 O QUE PRECISA SER FEITO
+1. Criar camada interna de banco de questões
+
+IMPORTANTE:
+
+NÃO copiar estrutura do outro repo diretamente
+NÃO depender dele em runtime
+NÃO misturar modelos
+
+Você deve:
+
+analisar o repo de questões
+extrair o conceito de estrutura
+criar um modelo próprio do AprovAI
+2. Criar domínio de questões
+
+Criar tipos como:
+
+QuestionBankItem
+QuestionOption
+QuestionResult
+
+Pensados para integração com:
+
+PracticeSession
+SubjectPerformance
+practiceSignals
+adaptivePlanningEngine
+3. Criar um seed bank
+
+Criar base inicial com:
+
+poucas questões (50–150)
+organizadas por matéria
+com qualidade > quantidade
+
+Formato sugerido:
+
+QuestionBankItem {
+id
+subject
+topic
+statement
+options
+correctOptionId
+explanation
+difficulty
+tags
 }
 
-function ModeChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.chip, active && styles.chipActive]}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+4. Criar engine de seleção
 
-function SectionHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle: string;
-}) {
-  return (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionSubtitle}>{subtitle}</Text>
-    </View>
-  );
-}
+Criar:
 
-function CountdownRingWidget({
-  title,
-  daysLeft,
-  examTitle,
-  progress,
-  tone,
-}: {
-  title: string;
-  daysLeft: number | null;
-  examTitle: string;
-  progress: number;
-  tone: WidgetTone;
-}) {
-  return (
-    <View style={styles.widgetSmall}>
-      <Text style={styles.widgetTitle}>{title}</Text>
+questionBankEngine.ts
 
-      <View style={styles.ringWrap}>
-        <ProgressRing
-          size={72}
-          strokeWidth={7}
-          progress={progress}
-          trackColor="rgba(255,255,255,0.08)"
-          progressColor={tone.accent}
-        />
-        <View style={styles.ringCenter}>
-          <Text style={styles.smallPrimaryNumber}>
-            {daysLeft === null ? '--' : daysLeft}
-          </Text>
-          <Text style={styles.microLabel}>
-            {daysLeft === 0 ? 'hoje' : 'dias'}
-          </Text>
-        </View>
-      </View>
+Responsável por:
 
-      <Text style={styles.widgetFootLabel} numberOfLines={1}>
-        {examTitle}
-      </Text>
-    </View>
-  );
-}
+selecionar questões por matéria
+priorizar matéria do dia
+priorizar matéria fraca
+respeitar quantidade (5–10)
+preparar sessão de prática
+5. Integrar com prática
 
-function StreakPulseWidget({
-  title,
-  current,
-  best,
-}: {
-  title: string;
-  current: number;
-  best: number;
-}) {
-  return (
-    <View style={styles.widgetSmallAlt}>
-      <Text style={styles.widgetTitle}>{title}</Text>
-      <Text style={styles.smallHero}>{current}</Text>
-      <Text style={styles.smallHeroSub}>dias seguidos</Text>
-      <Text style={styles.widgetFootLabel}>melhor: {best}</Text>
-    </View>
-  );
-}
+Fluxo:
 
-function NextBlockWidget({ snapshot }: { snapshot: WidgetSnapshot }) {
-  const badgeTone = nextBlockBadgeTone(snapshot.nextBlock.state);
+PracticeContext solicita sessão
+practiceEngine decide a matéria
+questionBankEngine entrega questões
+usuário responde
+QuestionResult é salvo
+SubjectPerformance é atualizado
+practiceSignals são gerados
+adaptivePlanningEngine reage
+6. Design (MUITO IMPORTANTE)
 
-  return (
-    <View style={styles.widgetMedium}>
-      <View style={styles.cardTopRow}>
-        <Text style={styles.widgetTitle}>📘 Próximo</Text>
-        <Pill label={snapshot.nextBlock.statusLabel} tone={badgeTone} />
-      </View>
+Você também é designer.
 
-      <Text style={styles.mediumHeadline}>{snapshot.nextBlock.subject}</Text>
-      <Text style={styles.mediumSubline}>{snapshot.nextBlock.timeLabel}</Text>
-    </View>
-  );
-}
+A experiência deve ser:
 
-function TodayProgressWidget({
-  completed,
-  total,
-  percent,
-}: {
-  completed: number;
-  total: number;
-  percent: number;
-}) {
-  return (
-    <View style={styles.widgetMedium}>
-      <View style={styles.cardTopRow}>
-        <Text style={styles.widgetTitle}>📈 Hoje</Text>
-        <Text style={styles.topMetric}>{percent}%</Text>
-      </View>
+simples
+rápida
+sem fricção
+focada em execução
 
-      <Text style={styles.mediumHeadline}>
-        {completed}/{total} blocos
-      </Text>
+A prática deve parecer:
 
-      <Text style={styles.mediumSubline}>progresso do dia</Text>
+👉 resolva isso agora em 2 minutos
 
-      <View style={styles.progressBarTrack}>
-        <View
-          style={[
-            styles.progressBarFill,
-            { width: `${Math.max(0, Math.min(percent, 100))}%` },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
+E não:
 
-function AIWidget({
-  snapshot,
-  tone,
-}: {
-  snapshot: WidgetSnapshot;
-  tone: WidgetTone;
-}) {
-  return (
-    <View style={styles.widgetMedium}>
-      <View style={styles.cardTopRow}>
-        <Text style={styles.widgetTitle}>🤖 IA</Text>
-        <Pill label={tone.label} tone={tone} />
-      </View>
+👉 entre em um sistema de simulados complexo
 
-      <Text style={styles.aiHeadline}>{snapshot.aiDailySignal.message}</Text>
-      <Text style={styles.mediumSubline}>
-        {snapshot.aiDailySignal.supportLabel}
-      </Text>
-    </View>
-  );
-}
+🎨 DIRETRIZES DE UX
+sessões curtas (5–10 questões)
+navegação direta
+foco no fluxo, não em configurações
+feedback claro:
+acerto/erro
+explicação curta
+final com sensação de progresso
+❌ NÃO FAZER
+banco gigante de questões
+filtro avançado por banca
+ranking
+multiplayer
+backend complexo
+overengineering
+✅ FAZER
+manter arquitetura atual
+evoluir incrementalmente
+código limpo e coeso
+separar domínio de UI
+priorizar experiência real
+🧠 COMO RESPONDER
 
-function DayBoardLargeWidget({
-  snapshot,
-  progressPercent,
-  completed,
-  total,
-  tone,
-}: {
-  snapshot: WidgetSnapshot;
-  progressPercent: number;
-  completed: number;
-  total: number;
-  tone: WidgetTone;
-}) {
-  return (
-    <View style={styles.widgetLarge}>
-      <View style={styles.cardTopRow}>
-        <View>
-          <Text style={styles.widgetTitle}>🧠 Day Board</Text>
-          <Text style={styles.largeIntro}>Seu dia, seu plano, sua IA</Text>
-        </View>
-        <Pill label={tone.label} tone={tone} />
-      </View>
+Você deve:
 
-      <View style={styles.largeMainRow}>
-        <View style={styles.largeRingBlock}>
-          <ProgressRing
-            size={92}
-            strokeWidth={9}
-            progress={progressPercent}
-            trackColor="rgba(255,255,255,0.08)"
-            progressColor={tone.accent}
-          />
-          <View style={styles.largeRingCenter}>
-            <Text style={styles.largeRingNumber}>{progressPercent}%</Text>
-            <Text style={styles.largeRingLabel}>hoje</Text>
-          </View>
-        </View>
+pensar como arquiteto de produto
+tomar decisões técnicas reais
+justificar escolhas
+evitar soluções genéricas
+propor estrutura de pastas
+propor código quando necessário
+manter compatibilidade com o sistema atual
+🎯 PRIMEIRA TAREFA
 
-        <View style={styles.largeInfoColumn}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Blocos</Text>
-            <Text style={styles.infoValue}>
-              {completed}/{total}
-            </Text>
-          </View>
+Comece criando:
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Próximo</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>
-              {snapshot.nextBlock.subject}
-            </Text>
-          </View>
+estrutura de pastas do question bank
+types completos
+exemplo de seed JSON
+questionBankEngine.ts
+integração com practiceEngine
 
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Horário</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>
-              {snapshot.nextBlock.timeLabel}
-            </Text>
-          </View>
-        </View>
-      </View>
+Tudo pronto para uso real dentro do AprovAI.
 
-      <View style={[styles.largeInsightCard, { borderColor: tone.border }]}>
-        <Text style={styles.largeInsightTitle}>Sinal da IA</Text>
-        <Text style={styles.largeInsightMessage}>
-          {snapshot.aiDailySignal.message}
-        </Text>
-        <Text style={styles.largeInsightSupport}>
-          {snapshot.aiDailySignal.supportLabel}
-        </Text>
-      </View>
-    </View>
-  );
-}
+🔥 OBSERVAÇÃO FINAL
 
-function ProgressRing({
-  size,
-  strokeWidth,
-  progress,
-  trackColor,
-  progressColor,
-}: {
-  size: number;
-  strokeWidth: number;
-  progress: number;
-  trackColor: string;
-  progressColor: string;
-}) {
-  const clamped = Math.max(0, Math.min(progress, 100));
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clamped / 100) * circumference;
+Isso NÃO é um exercício.
 
-  return (
-    <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-      <Circle
-        stroke={trackColor}
-        fill="none"
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        strokeWidth={strokeWidth}
-      />
-      <Circle
-        stroke={progressColor}
-        fill="none"
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        strokeWidth={strokeWidth}
-        strokeDasharray={`${circumference} ${circumference}`}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-      />
-    </Svg>
-  );
-}
+Você está construindo um produto real.
 
-function Pill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: WidgetTone;
-}) {
-  return (
-    <View
-      style={[
-        styles.pill,
-        {
-          backgroundColor: tone.background,
-          borderColor: tone.border,
-        },
-      ]}
-    >
-      <Text style={[styles.pillText, { color: tone.accent }]}>{label}</Text>
-    </View>
-  );
-}
+Cada decisão deve considerar:
 
-type WidgetTone = {
-  accent: string;
-  background: string;
-  border: string;
-  label: string;
-};
-
-function getRiskTone(
-  risk: 'low' | 'medium' | 'high' | 'empty'
-): WidgetTone {
-  switch (risk) {
-    case 'high':
-      return {
-        accent: '#F97373',
-        background: 'rgba(249, 115, 115, 0.10)',
-        border: 'rgba(249, 115, 115, 0.24)',
-        label: 'alto risco',
-      };
-    case 'medium':
-      return {
-        accent: '#FBBF24',
-        background: 'rgba(251, 191, 36, 0.10)',
-        border: 'rgba(251, 191, 36, 0.24)',
-        label: 'atenção',
-      };
-    case 'low':
-      return {
-        accent: '#34D399',
-        background: 'rgba(52, 211, 153, 0.10)',
-        border: 'rgba(52, 211, 153, 0.24)',
-        label: 'estável',
-      };
-    case 'empty':
-    default:
-      return {
-        accent: '#A78BFA',
-        background: 'rgba(167, 139, 250, 0.10)',
-        border: 'rgba(167, 139, 250, 0.22)',
-        label: 'aguardando',
-      };
-  }
-}
-
-function countdownToneFromStatus(
-  status: 'active' | 'today' | 'expired' | 'empty'
-): WidgetTone {
-  switch (status) {
-    case 'today':
-      return {
-        accent: '#F97373',
-        background: 'rgba(249, 115, 115, 0.10)',
-        border: 'rgba(249, 115, 115, 0.24)',
-        label: 'hoje',
-      };
-    case 'expired':
-      return {
-        accent: '#94A3B8',
-        background: 'rgba(148, 163, 184, 0.10)',
-        border: 'rgba(148, 163, 184, 0.20)',
-        label: 'encerrado',
-      };
-    case 'empty':
-      return {
-        accent: '#A78BFA',
-        background: 'rgba(167, 139, 250, 0.10)',
-        border: 'rgba(167, 139, 250, 0.22)',
-        label: 'sem data',
-      };
-    case 'active':
-    default:
-      return {
-        accent: '#60A5FA',
-        background: 'rgba(96, 165, 250, 0.10)',
-        border: 'rgba(96, 165, 250, 0.22)',
-        label: 'ativa',
-      };
-  }
-}
-
-function nextBlockBadgeTone(
-  state: 'upcoming' | 'ideal' | 'now' | 'done' | 'empty'
-): WidgetTone {
-  switch (state) {
-    case 'ideal':
-      return {
-        accent: '#34D399',
-        background: 'rgba(52, 211, 153, 0.10)',
-        border: 'rgba(52, 211, 153, 0.24)',
-        label: 'ideal',
-      };
-    case 'now':
-      return {
-        accent: '#60A5FA',
-        background: 'rgba(96, 165, 250, 0.10)',
-        border: 'rgba(96, 165, 250, 0.22)',
-        label: 'agora',
-      };
-    case 'done':
-      return {
-        accent: '#A78BFA',
-        background: 'rgba(167, 139, 250, 0.10)',
-        border: 'rgba(167, 139, 250, 0.22)',
-        label: 'feito',
-      };
-    case 'empty':
-      return {
-        accent: '#94A3B8',
-        background: 'rgba(148, 163, 184, 0.10)',
-        border: 'rgba(148, 163, 184, 0.20)',
-        label: 'vazio',
-      };
-    case 'upcoming':
-    default:
-      return {
-        accent: '#60A5FA',
-        background: 'rgba(96, 165, 250, 0.10)',
-        border: 'rgba(96, 165, 250, 0.22)',
-        label: 'em breve',
-      };
-  }
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#07111F',
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 18,
-  },
-  header: {
-    marginBottom: 4,
-  },
-  eyebrow: {
-    color: '#8B9BB4',
-    fontSize: 12,
-    marginBottom: 6,
-    letterSpacing: 0.4,
-  },
-  screenTitle: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  screenSubtitle: {
-    color: '#8B9BB4',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  toggleRow: {
-    gap: 10,
-    paddingTop: 4,
-    paddingBottom: 2,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#132033',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  chipActive: {
-    backgroundColor: '#1F3150',
-    borderColor: 'rgba(96,165,250,0.30)',
-  },
-  chipText: {
-    color: '#B8C4D9',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
-  },
-  sectionHeader: {
-    marginTop: 12,
-    marginBottom: 2,
-  },
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    color: '#7E8CA4',
-    fontSize: 13,
-  },
-  smallGrid: {
-    flexDirection: 'row',
-    gap: 14,
-  },
-  stack: {
-    gap: 14,
-  },
-  widgetSmall: {
-    flex: 1,
-    minHeight: 170,
-    backgroundColor: '#101B2C',
-    borderRadius: 30,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  widgetSmallAlt: {
-    flex: 1,
-    minHeight: 170,
-    backgroundColor: '#121F34',
-    borderRadius: 30,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  widgetMedium: {
-    width: '100%',
-    backgroundColor: '#101B2C',
-    borderRadius: 30,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
-  },
-  widgetLarge: {
-    width: '100%',
-    backgroundColor: '#101B2C',
-    borderRadius: 34,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    shadowColor: '#000',
-    shadowOpacity: 0.30,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 10,
-    gap: 16,
-  },
-  widgetTitle: {
-    color: '#8FA1BC',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  ringWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    marginBottom: 8,
-  },
-  ringCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  smallPrimaryNumber: {
-    color: '#FFFFFF',
-    fontSize: 26,
-    fontWeight: '700',
-  },
-  microLabel: {
-    color: '#7E8CA4',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  widgetFootLabel: {
-    color: '#7E8CA4',
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 'auto',
-  },
-  smallHero: {
-    color: '#FFFFFF',
-    fontSize: 34,
-    fontWeight: '700',
-    marginTop: 12,
-  },
-  smallHeroSub: {
-    color: '#A3B1C6',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  mediumHeadline: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-    marginTop: 18,
-    marginBottom: 6,
-  },
-  mediumSubline: {
-    color: '#8FA1BC',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 2,
-  },
-  topMetric: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  progressBarTrack: {
-    width: '100%',
-    height: 10,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 999,
-    overflow: 'hidden',
-    marginTop: 16,
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#60A5FA',
-  },
-  aiHeadline: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '700',
-    lineHeight: 28,
-    marginTop: 18,
-    marginBottom: 6,
-  },
-  pill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  pillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'lowercase',
-  },
-  largeIntro: {
-    color: '#8FA1BC',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  largeMainRow: {
-    flexDirection: 'row',
-    gap: 18,
-    alignItems: 'center',
-  },
-  largeRingBlock: {
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  largeRingCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  largeRingNumber: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  largeRingLabel: {
-    color: '#8FA1BC',
-    fontSize: 12,
-    marginTop: 2,
-  },
-  largeInfoColumn: {
-    flex: 1,
-    gap: 12,
-  },
-  infoRow: {
-    gap: 2,
-  },
-  infoLabel: {
-    color: '#7E8CA4',
-    fontSize: 12,
-  },
-  infoValue: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  largeInsightCard: {
-    borderWidth: 1,
-    borderRadius: 24,
-    padding: 14,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  largeInsightTitle: {
-    color: '#8FA1BC',
-    fontSize: 12,
-    marginBottom: 8,
-  },
-  largeInsightMessage: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 26,
-  },
-  largeInsightSupport: {
-    color: '#8FA1BC',
-    fontSize: 13,
-    marginTop: 6,
-  },
-});
+escalabilidade
+experiência do usuário
+evolução futura

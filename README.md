@@ -1,240 +1,237 @@
-# 🧠 AprovAI
+# 🚀 AprovAI
 
-**AprovAI** é um aplicativo mobile inteligente para organização de estudos voltado para concursos públicos.
-
-Ele não é apenas um planner.
-
-O AprovAI funciona como um **sistema adaptativo de preparação**, que:
-
-- organiza automaticamente o cronograma
-- guia o usuário no dia a dia
-- mede consistência
-- identifica dificuldades
-- adapta o plano com base no comportamento
-- reduz a frustração e a culpa
-- aumenta a constância
+> Sistema inteligente de preparação para concursos públicos  
+> Foco em constância, adaptação e progresso real
 
 ---
 
-## 🎯 Proposta
+## 🧠 Sobre o projeto
 
-A maioria das pessoas falha não por falta de esforço, mas por:
+O **AprovAI** não é apenas um organizador de estudos.
 
-- não saber o que estudar agora
-- estudar sem estratégia
-- esquecer rapidamente o conteúdo
-- não conseguir manter consistência
-- não ter feedback claro de progresso
+Ele é um sistema que:
 
-O AprovAI resolve isso com um sistema que:
-
-> **pensa, adapta e evolui junto com o usuário**
-
----
-
-## 🧠 Filosofia do Produto
-
-- constância > intensidade  
-- adaptação > rigidez  
-- sistema > motivação  
-- progresso real > volume ilusório  
+- organiza automaticamente o plano de estudo
+- guia o usuário no que fazer diariamente
+- mede consistência e execução real
+- valida aprendizado através de prática
+- adapta o cronograma com base no desempenho
+- reduz fricção e culpa
+- aumenta constância
+- maximiza a chance de aprovação
 
 ---
 
-## ⚙️ Stack
+## 🎯 Filosofia do produto
 
-- React Native
-- Expo Router
-- TypeScript
-- AsyncStorage
+O AprovAI foi construído com base em princípios simples:
+
+- constância > intensidade
+- adaptação > rigidez
+- sistema > motivação
+- progresso real > volume ilusório
 
 ---
 
 ## 🏗️ Arquitetura
 
-O projeto segue uma arquitetura orientada a domínio, separando responsabilidades:
+O sistema foi projetado para ser modular, escalável e orientado a domínio.
 
 ### Contextos
 
-- **SetupContext**
-  - dados do usuário
-  - prova, matérias, disponibilidade
-
-- **ScheduleContext**
-  - cronograma
-  - execução de blocos
-  - integração com adaptação
-
-- **AIContext**
-  - análise de comportamento
-  - consistência
-  - taxa de conclusão
-  - risco
-
-- **AppContext**
-  - fachada unificada
-  - ponto de acesso para a UI
+- SetupContext → dados iniciais do usuário  
+- ScheduleContext → cronograma e execução de blocos  
+- AIContext → análise comportamental e consistência  
+- PracticeContext → sessões de prática e desempenho  
+- AppContext → fachada unificada do sistema  
 
 ---
 
 ### Engines
 
-- **scheduleEngine**
-  - gera cronograma inicial
-
-- **adaptivePlanningEngine**
-  - ajusta o plano automaticamente com base em:
-    - desempenho
-    - consistência
-    - risco
-    - fase do usuário
-
-- **reviewEngine**
-  - cria revisões automaticamente
-
-- **behaviorTracker**
-  - mede consistência e padrões
-
-- **predictionEngine**
-  - estima risco e carga ideal
+- scheduleEngine → geração inicial do plano  
+- adaptivePlanningEngine → adaptação automática  
+- reviewEngine → criação de revisões  
+- behaviorTracker → análise de consistência  
+- predictionEngine → risco e carga sugerida  
+- practiceEngine → construção de sessões de prática  
+- questionBankEngine → seleção de questões  
 
 ---
 
-## 🧩 Funcionalidades atuais
+## 🔄 Fluxo principal do sistema
 
-- onboarding inteligente
-- geração automática de cronograma
-- execução diária por blocos
-- registro de dificuldade e confiança
-- ajustes adaptativos automáticos
-- sugestões inteligentes de estudo
-- painel de controle na home
-- acompanhamento de progresso
-- streak de consistência
+O AprovAI opera em um ciclo contínuo:
 
----
+onboarding → cronograma → execução → prática → adaptação
 
-## 🔥 Diferencial
+Mais detalhado:
 
-O AprovAI não apenas organiza.
-
-Ele:
-
-- aprende com o usuário
-- detecta padrões
-- ajusta a carga
-- redistribui atrasos
-- prioriza matérias fracas
-- protege a constância
+1. O sistema gera um plano automático  
+2. O usuário executa blocos de estudo  
+3. Fornece feedback (dificuldade + confiança)  
+4. Realiza prática (validação objetiva)  
+5. O sistema coleta dados  
+6. O plano é ajustado automaticamente  
 
 ---
 
-## 🚀 Em desenvolvimento
+## 🧪 Sistema de prática
 
-### 🔹 Prática (Simulados)
+A prática não é uma feature isolada.
 
-Nova funcionalidade em desenvolvimento:
+Ela é um **sensor do sistema**.
 
-- sessões de questões baseadas nas matérias do dia
-- feedback por matéria
+### Funções:
+
+- validar aprendizado real  
+- detectar inconsistência entre confiança e desempenho  
+- alimentar o sistema adaptativo  
+
+### Características:
+
+- sessões curtas (5–10 questões)  
+- baseadas no plano do dia  
+- focadas em matérias fracas  
+- feedback imediato  
+
+---
+
+## 📚 Banco de questões
+
+O AprovAI utiliza um **Question Bank interno**, com:
+
+- base inicial (seed)
+- estrutura padronizada
 - integração com o sistema adaptativo
 
-Objetivo:
+### Estrutura:
 
-> estudar → praticar → ajustar → evoluir
+data/
+  questions/
+    seed/
+      constitutional-law.json
+      portuguese.json
 
----
+### Modelo:
 
-## ❌ Fora do escopo atual
-
-Para manter o foco no MVP:
-
-- modo grupo
-- ranking
-- funcionalidades sociais
-- simulados avançados
-- backend complexo
-
----
-
-## 🧪 Status do Projeto
-
-O AprovAI está em fase de:
-
-> **MVP (Minimum Viable Product)**
-
-Foco atual:
-
-- estabilização
-- melhoria de experiência
-- validação com usuários reais
+QuestionBankItem {
+  id: string
+  subject: string
+  topic?: string
+  statement: string
+  options: { id: string, text: string }[]
+  correctOptionId: string
+  explanation?: string
+  difficulty?: number
+  tags: string[]
+}
 
 ---
 
-## 💰 Monetização (futuro)
+## 🧠 Adaptação inteligente
 
-Modelo planejado:
+O sistema adapta automaticamente o plano com base em:
 
-### Gratuito
-- cronograma
-- execução
-- prática básica
-- progresso
+- consistência do usuário
+- taxa de conclusão
+- dificuldade percebida
+- confiança declarada
+- desempenho na prática
 
-### Pro
-- insights avançados
-- adaptação inteligente completa
-- análise de desempenho por matéria
-- recomendações automáticas
+### Ações possíveis:
+
+- redistribuição de blocos  
+- redução de carga  
+- inserção de revisão  
+- reforço de matéria fraca  
+- proteção de constância  
+
+---
+
+## 📊 Home (Painel Inteligente)
+
+A Home não é um dashboard.
+
+Ela é um **painel de decisão**.
+
+Exibe:
+
+- o que estudar hoje  
+- próximo bloco  
+- sinal da IA  
+- prática sugerida  
+- matéria mais fraca  
+- progresso real  
+
+---
+
+## 🎨 Experiência do usuário
+
+O AprovAI foi desenhado para:
+
+- reduzir fricção  
+- eliminar decisões desnecessárias  
+- manter o usuário em movimento  
+
+A prática segue o princípio:
+
+"Resolva isso agora em 2 minutos"
+
+---
+
+## ⚠️ Decisões de produto
+
+O AprovAI NÃO é:
+
+- um banco de questões massivo  
+- um sistema de ranking  
+- uma rede social  
+- um app de motivação  
+
+Ele é:
+
+👉 um sistema que faz o usuário estudar de forma consistente e eficiente
+
+---
+
+## 🛠️ Stack
+
+- React Native (Expo Router)  
+- TypeScript  
+- AsyncStorage  
+
+---
+
+## 🚧 Roadmap (alto nível)
+
+- [x] Cronograma automático  
+- [x] Execução de blocos  
+- [x] Sistema adaptativo  
+- [x] Análise de comportamento  
+- [x] Estrutura de prática  
+- [ ] Integração completa com banco de questões  
+- [ ] Otimização de UX da prática  
+- [ ] Ajustes finos de adaptação  
+
+---
+
+## 💡 Objetivo final
+
+Construir um sistema que:
+
+- organiza  
+- orienta  
+- valida  
+- adapta  
+- evolui com o usuário  
+
+E não apenas mais um app de estudos.
 
 ---
 
 ## 🧠 Visão
 
-Construir um sistema que:
+O AprovAI é um sistema que pensa.
 
-- organiza
-- orienta
-- adapta
-- mede progresso real
-- aumenta a constância
-
-E não apenas mais um app de estudo.
-
----
-
-## 📱 Roadmap
-
-### Curto prazo
-- estabilizar fluxo principal
-- implementar prática simples
-- melhorar Home como painel de controle
-
-### Médio prazo
-- integrar prática com adaptação
-- melhorar insights
-- introduzir versão Pro
-
-### Longo prazo
-- sistema completo de preparação
-- inteligência preditiva
-- evolução baseada em dados reais
-
----
-
-## 👨‍💻 Autor
-
-Desenvolvido por Thales.
-
----
-
-## 📌 Observação
-
-Este projeto está sendo construído com foco em:
-
-- produto real
-- experiência do usuário
-- evolução incremental
-- decisões orientadas a valor
-
----
+E quanto mais o usuário usa, melhor ele fica.
