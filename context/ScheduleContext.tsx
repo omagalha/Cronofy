@@ -12,6 +12,7 @@ import { IReviewItem } from '../apps/shared/types/review';
 import {
   AdaptivePlanningResult,
   buildAdaptivePlan,
+  SubjectPracticeSignal,
 } from '../utils/adaptivePlanningEngine';
 import { generateReviewsFromCompletedBlock, mergeReviewQueue } from '../utils/reviewEngine';
 import {
@@ -66,6 +67,7 @@ type ScheduleContextData = {
   adaptiveSuggestions: AdaptivePlanningResult['suggestions'];
   adaptiveMetadata: AdaptivePlanningResult['metadata'] | null;
   applyAdaptivePlan: () => void;
+  setPracticeSignals: (signals: SubjectPracticeSignal[]) => void;
 };
 
 const STORAGE_KEYS = {
@@ -704,6 +706,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
   const [persistedSchedule, setPersistedSchedule] =
     useState<PersistedSchedule | null>(null);
   const [reviewQueue, setReviewQueue] = useState<IReviewItem[]>([]);
+  const [practiceSignals, setPracticeSignals] = useState<SubjectPracticeSignal[]>([]);
   const [isScheduleLoaded, setIsScheduleLoaded] = useState(false);
 
   const schedule = useMemo(() => persistedSchedule?.days ?? [], [persistedSchedule]);
@@ -949,6 +952,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       analysis: ai.aiAnalysis,
       setup: setupData,
       reviewQueue,
+      practiceSignals,
       generatedAt: persistedSchedule.meta.generatedAt,
     });
   }, [
@@ -959,6 +963,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     ai.aiAnalysis,
     setupData,
     reviewQueue,
+    practiceSignals,
   ]);
 
   const previewAdaptiveSchedule = useMemo(() => {
@@ -1025,6 +1030,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
     ]);
     setPersistedSchedule(null);
     setReviewQueue([]);
+    setPracticeSignals([]);
   }, []);
 
   const clearSchedule = useCallback(async () => {
@@ -1055,6 +1061,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       adaptiveSuggestions,
       adaptiveMetadata,
       applyAdaptivePlan,
+      setPracticeSignals,
     }),
     [
       schedule,
@@ -1074,6 +1081,7 @@ export function ScheduleProvider({ children }: ScheduleProviderProps) {
       adaptiveSuggestions,
       adaptiveMetadata,
       applyAdaptivePlan,
+      setPracticeSignals,
     ]
   );
 

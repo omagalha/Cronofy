@@ -94,12 +94,22 @@ export interface AdaptivePlanningResult {
   };
 }
 
+export interface SubjectPracticeSignal {
+  subject: string;
+  accuracy: number;
+  recentAccuracy: number;
+  totalQuestions: number;
+  trend: 'up' | 'down' | 'stable';
+  lastPracticedAt: string | null;
+}
+
 export interface BuildAdaptivePlanInput {
   schedule: ScheduleDay[];
   studyLogs: StudyLog[];
   analysis?: AIAnalysis | null;
   setup?: UserSetupData;
   reviewQueue?: IReviewItem[];
+  practiceSignals?: SubjectPracticeSignal[];
   generatedAt?: string;
 }
 
@@ -111,6 +121,9 @@ export interface AdaptiveCompletionMetrics {
 }
 
 const DEFAULT_TIME_SLOTS = ['08:00', '10:00', '14:00', '16:00', '18:00', '20:00'];
+const MIN_MEANINGFUL_PRACTICE_QUESTIONS = 5;
+const LOW_PRACTICE_ACCURACY = 65;
+const LOW_PRACTICE_RECENT_ACCURACY = 60;
 
 const PRODUCT_COPY = {
   recoverMissedBlocks: (count: number): AdaptiveSuggestion => ({
@@ -176,6 +189,19 @@ const cloneSchedule = (schedule: ScheduleDay[]): ScheduleDay[] =>
   }));
 
 const normalizeSubjectName = (value: string): string => value.trim().toLowerCase();
+
+const normalizePracticeSignals = (
+  practiceSignals: SubjectPracticeSignal[] = []
+): SubjectPracticeSignal[] => {
+  return practiceSignals
+    .filter((signal) => typeof signal.subject === 'string' && signal.subject.trim().length > 0)
+    .map((signal) => ({
+      ...signal,
+      totalQuestions: Math.max(0, signal.totalQuestions),
+      accuracy: Math.max(0, Math.min(100, Math.round(signal.accuracy))),
+      recentAccuracy: Math.max(0, Math.min(100, Math.round(signal.recentAccuracy))),
+    }));
+};
 
 const getDayMetrics = (day: ScheduleDay): ScheduleDay => {
   const plannedLoadMinutes = day.blocks.reduce(
@@ -286,10 +312,67 @@ const getSubjectPerformance = (
   return result;
 };
 
+const getPracticeWeakSignal = (
+  practiceSignals: SubjectPracticeSignal[] = []
+): SubjectPracticeSignal | null => {
+  const meaningfulSignals = normalizePracticeSignals(practiceSignals).filter(
+    (signal) => signal.totalQuestions >= MIN_MEANINGFUL_PRACTICE_QUESTIONS
+  );
+
+  if (meaningfulSignals.length === 0) {
+    return null;
+  }
+
+  const rankedSignals = [...meaningfulSignals].sort((a, b) => {
+    const aIsFalling = a.trend === 'down' ? 1 : 0;
+    const bIsFalling = b.trend === 'down' ? 1 : 0;
+
+    if (aIsFalling !== bIsFalling) {
+      return bIsFalling - aIsFalling;
+    }
+
+    if (a.recentAccuracy !== b.recentAccuracy) {
+      return a.recentAccuracy - b.recentAccuracy;
+    }
+
+    if (a.accuracy !== b.accuracy) {
+      return a.accuracy - b.accuracy;
+    }
+
+    return b.totalQuestions - a.totalQuestions;
+  });
+
+  const weakestSignal = rankedSignals[0];
+
+  if (
+    weakestSignal.recentAccuracy <= LOW_PRACTICE_RECENT_ACCURACY ||
+    weakestSignal.accuracy <= LOW_PRACTICE_ACCURACY ||
+    weakestSignal.trend === 'down'
+  ) {
+    return weakestSignal;
+  }
+
+  return null;
+};
+
 const getWeakestSubject = (
   studyLogs: StudyLog[],
-  analysis?: AIAnalysis | null
+  analysis?: AIAnalysis | null,
+  practiceSignals?: SubjectPracticeSignal[]
 ): string | null => {
+  const meaningfulPracticeSignals = normalizePracticeSignals(practiceSignals).filter(
+    (signal) => signal.totalQuestions >= MIN_MEANINGFUL_PRACTICE_QUESTIONS
+  );
+  const weakPracticeSignal = getPracticeWeakSignal(practiceSignals);
+
+  if (weakPracticeSignal?.subject) {
+    return weakPracticeSignal.subject;
+  }
+
+  if (meaningfulPracticeSignals.length > 0) {
+    return null;
+  }
+
   if (analysis?.hardestSubject) return analysis.hardestSubject;
 
   const performance = getSubjectPerformance(studyLogs);
@@ -356,9 +439,14 @@ const shouldInsertReview = (
   phase: UserPhase,
   reviewQueue: IReviewItem[],
   analysis?: AIAnalysis | null,
-  studyLogs?: StudyLog[]
+  studyLogs?: StudyLog[],
+  practiceSignals?: SubjectPracticeSignal[]
 ): boolean => {
   if (reviewQueue.some((item) => item.status === 'pending')) {
+    return true;
+  }
+
+  if (getPracticeWeakSignal(practiceSignals)) {
     return true;
   }
 
@@ -519,6 +607,33 @@ const insertReviewBlock = (
   return { schedule: applyDayMetrics(next), inserted: 1 };
 };
 
+const getSyntheticReviewTargetFromPractice = (
+  practiceSignals: SubjectPracticeSignal[] = []
+):
+  | {
+      id: string;
+      sourceBlockId: string;
+      subject: string;
+      stage: 'reinforcement';
+      priority: number;
+    }
+  | null => {
+  const weakSignal = getPracticeWeakSignal(practiceSignals);
+
+  if (!weakSignal) {
+    return null;
+  }
+
+  return {
+    id: `practice-review-${normalizeSubjectName(weakSignal.subject)}`,
+    sourceBlockId: `practice-${normalizeSubjectName(weakSignal.subject)}`,
+    subject: weakSignal.subject,
+    stage: 'reinforcement',
+    priority:
+      weakSignal.recentAccuracy <= 50 || weakSignal.trend === 'down' ? 5 : 4,
+  };
+};
+
 const rebalanceTowardWeakSubject = (
   schedule: ScheduleDay[],
   weakSubject: string | null,
@@ -618,6 +733,7 @@ export function buildAdaptivePlan({
   analysis,
   setup,
   reviewQueue = [],
+  practiceSignals = [],
   generatedAt,
 }: BuildAdaptivePlanInput): AdaptivePlanningResult {
   let workingSchedule = applyDayMetrics(cloneSchedule(schedule));
@@ -628,7 +744,7 @@ export function buildAdaptivePlan({
   let reviewBlocksInserted = 0;
   let rebalanceActions = 0;
 
-  const weakestSubject = getWeakestSubject(studyLogs, analysis);
+  const weakestSubject = getWeakestSubject(studyLogs, analysis, practiceSignals);
   const daysUntilExam = getDaysUntilExam(setup?.examDate);
   const userPhase = resolveUserPhase({
     analysis: analysis ?? null,
@@ -655,10 +771,20 @@ export function buildAdaptivePlan({
   }
 
   const priorityReview = getReviewPriorityBlock(reviewQueue);
+  const practiceReviewTarget = getSyntheticReviewTargetFromPractice(practiceSignals);
 
-  if (shouldInsertReview(userPhase, reviewQueue, analysis, studyLogs)) {
+  if (
+    shouldInsertReview(
+      userPhase,
+      reviewQueue,
+      analysis,
+      studyLogs,
+      practiceSignals
+    )
+  ) {
     const reviewTarget =
-      priorityReview ?? {
+      priorityReview ??
+      practiceReviewTarget ?? {
         id: `synthetic-review-${normalizeSubjectName(weakestSubject ?? 'review')}`,
         sourceBlockId: weakestSubject ?? 'review',
         subject: weakestSubject ?? 'Revisão estratégica',
@@ -671,7 +797,11 @@ export function buildAdaptivePlan({
     reviewBlocksInserted = review.inserted;
 
     if (reviewBlocksInserted > 0) {
-      suggestions.push(PRODUCT_COPY.insertReview(priorityReview?.priority));
+      suggestions.push(
+        PRODUCT_COPY.insertReview(
+          priorityReview?.priority ?? practiceReviewTarget?.priority
+        )
+      );
     }
   }
 

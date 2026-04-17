@@ -1,6 +1,7 @@
 import React, { ReactNode, useMemo } from 'react';
 import { AIProvider, useAIContext } from './AIContext';
 import { AuthProvider, useAuthContext } from './AuthContext';
+import { PracticeProvider, usePracticeContext } from './PracticeContext';
 import { ScheduleProvider, useScheduleContext } from './ScheduleContext';
 import { SetupProvider, useSetupContext } from './SetupContext';
 
@@ -8,6 +9,7 @@ export type AppContextData =
   ReturnType<typeof useAuthContext> &
   ReturnType<typeof useSetupContext> &
   ReturnType<typeof useScheduleContext> &
+  ReturnType<typeof usePracticeContext> &
   ReturnType<typeof useAIContext> & {
     resetAll: () => void;
     adjustSchedule: () => void;
@@ -22,7 +24,9 @@ export function AppProvider({ children }: AppProviderProps) {
     <AuthProvider>
       <SetupProvider>
         <AIProvider>
-          <ScheduleProvider>{children}</ScheduleProvider>
+          <ScheduleProvider>
+            <PracticeProvider>{children}</PracticeProvider>
+          </ScheduleProvider>
         </AIProvider>
       </SetupProvider>
     </AuthProvider>
@@ -33,12 +37,14 @@ export function useAppContext(): AppContextData {
   const auth = useAuthContext();
   const setup = useSetupContext();
   const schedule = useScheduleContext();
+  const practice = usePracticeContext();
   const ai = useAIContext();
 
   return useMemo(() => {
     function resetAll() {
       setup.resetSetup();
       schedule.resetSchedule();
+      practice.resetPractice();
       ai.resetAI();
     }
 
@@ -50,9 +56,10 @@ export function useAppContext(): AppContextData {
       ...auth,
       ...setup,
       ...schedule,
+      ...practice,
       ...ai,
       resetAll,
       adjustSchedule,
     };
-  }, [auth, setup, schedule, ai]);
+  }, [auth, setup, schedule, practice, ai]);
 }

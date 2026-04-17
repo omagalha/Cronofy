@@ -67,6 +67,20 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="practice"
+        options={{
+          title: 'Pratica',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'help-circle' : 'help-circle-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Perfil',
@@ -76,16 +90,6 @@ export default function TabsLayout() {
               size={size}
               color={color}
             />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="widgets-preview"
-        options={{
-          title: 'Preview',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
           ),
         }}
       />

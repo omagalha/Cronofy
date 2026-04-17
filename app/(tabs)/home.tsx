@@ -1,14 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { router, type Href } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import AdaptiveSuggestionsCard from '../../components/ui/AdaptiveSuggestionsCard';
+import AIDailySignalCard from '../../components/widgets/AIDailySignalCard';
+import CountdownRingCard from '../../components/widgets/CountdownRingCard';
+import DailyPracticeCard from '../../components/widgets/DailyPracticeCard';
+import NextBlockCard from '../../components/widgets/NextBlockCard';
+import WeakSubjectCard from '../../components/widgets/WeakSubjectCard';
+import {
+  PracticeRecommendation,
+  SubjectPerformance,
+} from '../../apps/shared/types/practice';
 import { useAppContext } from '../../context/AppContext';
+import { buildWidgetSnapshotFromAppContext } from '../../widgets/fromAppContext';
+import { saveWidgetSnapshot } from '../../widgets/storage';
 
 type BlockItem = {
   id: string;
@@ -25,17 +32,17 @@ type ScheduleDay = {
   blocks?: BlockItem[];
 };
 
-const weekDayMapPt: Record<number, string> = {
+const WEEKDAY_LABELS_PT: Record<number, string> = {
   0: 'domingo',
   1: 'segunda-feira',
-  2: 'terça-feira',
+  2: 'terca-feira',
   3: 'quarta-feira',
   4: 'quinta-feira',
   5: 'sexta-feira',
-  6: 'sábado',
+  6: 'sabado',
 };
 
-const weekDayMapEn: Record<number, string> = {
+const WEEKDAY_LABELS_EN: Record<number, string> = {
   0: 'sunday',
   1: 'monday',
   2: 'tuesday',
@@ -46,35 +53,72 @@ const weekDayMapEn: Record<number, string> = {
 };
 
 function normalizeText(value?: string | null) {
-  return (value ?? '').trim().toLowerCase();
+  return (value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
-function getTodayDateKey() {
-  return new Date().toISOString().slice(0, 10);
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatDuration(duration?: string | number) {
   if (typeof duration === 'number') return `${duration} min`;
   if (typeof duration === 'string' && duration.trim().length > 0) return duration;
-  return 'Sessão';
+  return 'Sessao';
+}
+
+function sortSubjectPerformance(items: SubjectPerformance[]) {
+  return [...items].sort((a, b) => {
+    if (a.accuracy !== b.accuracy) {
+      return a.accuracy - b.accuracy;
+    }
+
+    if (a.recentAccuracy !== b.recentAccuracy) {
+      return a.recentAccuracy - b.recentAccuracy;
+    }
+
+    return a.subject.localeCompare(b.subject);
+  });
 }
 
 export default function HomeScreen() {
   const {
     schedule,
+    persistedSchedule,
     setupData,
     aiAnalysis,
     streak,
     completeBlockById,
     adaptiveSuggestions,
     applyAdaptivePlan,
+    practiceSummary,
+    subjectPerformance,
+    practiceRecommendations,
+    currentPracticeSession,
   } = useAppContext();
+
   const [adaptiveFeedback, setAdaptiveFeedback] = useState<string | null>(null);
 
-  const todayIndex = new Date().getDay();
-  const todayPt = weekDayMapPt[todayIndex];
-  const todayEn = weekDayMapEn[todayIndex];
-  const todayDate = getTodayDateKey();
+  const widgetSnapshot = useMemo(
+    () =>
+      buildWidgetSnapshotFromAppContext({
+        setupData,
+        schedule,
+        persistedSchedule,
+        aiAnalysis,
+      }),
+    [setupData, schedule, persistedSchedule, aiAnalysis]
+  );
+
+  useEffect(() => {
+    saveWidgetSnapshot(widgetSnapshot);
+  }, [widgetSnapshot]);
 
   useEffect(() => {
     if (!adaptiveFeedback) return;
@@ -88,29 +132,30 @@ export default function HomeScreen() {
 
   const scheduleDays = useMemo<ScheduleDay[]>(() => {
     if (Array.isArray(schedule)) return schedule as ScheduleDay[];
-    if (schedule && Array.isArray((schedule as any).days)) {
-      return (schedule as any).days as ScheduleDay[];
+    if (schedule && Array.isArray((schedule as { days?: ScheduleDay[] }).days)) {
+      return (schedule as { days: ScheduleDay[] }).days;
     }
     return [];
   }, [schedule]);
 
+  const todayIndex = new Date().getDay();
+  const todayDate = getLocalDateKey();
+
   const todaySchedule = useMemo(() => {
+    const todayPt = WEEKDAY_LABELS_PT[todayIndex];
+    const todayEn = WEEKDAY_LABELS_EN[todayIndex];
+
     return (
-      scheduleDays.find((d) => normalizeText(String(d.date)) === todayDate) ||
-      scheduleDays.find((d) => Number(d.day) === todayIndex) ||
-      scheduleDays.find((d) => normalizeText(String(d.day)) === todayPt) ||
-      scheduleDays.find((d) => normalizeText(d.weekday) === todayEn) ||
+      scheduleDays.find((day) => normalizeText(day.date) === todayDate) ??
+      scheduleDays.find((day) => Number(day.day) === todayIndex) ??
+      scheduleDays.find((day) => normalizeText(String(day.day)) === todayPt) ??
+      scheduleDays.find((day) => normalizeText(day.weekday) === todayEn) ??
       null
     );
-  }, [scheduleDays, todayDate, todayIndex, todayPt, todayEn]);
+  }, [scheduleDays, todayDate, todayIndex]);
 
-  const todayBlocks = useMemo<BlockItem[]>(() => {
-    return todaySchedule?.blocks ?? [];
-  }, [todaySchedule]);
-
-  const nextBlock = useMemo(() => {
-    return todayBlocks.find((b) => !b.completed) ?? null;
-  }, [todayBlocks]);
+  const todayBlocks = todaySchedule?.blocks ?? [];
+  const nextBlock = todayBlocks.find((block) => !block.completed) ?? null;
 
   const consistency = Math.max(
     0,
@@ -124,22 +169,39 @@ export default function HomeScreen() {
 
   const riskLabel =
     aiAnalysis?.currentRiskLevel === 'high'
-      ? 'Atenção alta'
+      ? 'Atencao alta'
       : aiAnalysis?.currentRiskLevel === 'medium'
       ? 'Risco moderado'
-      : 'Bom ritmo';
+      : 'Plano estavel';
 
   const riskMessage =
     aiAnalysis?.currentRiskLevel === 'high'
-      ? 'Hoje vale reduzir a carga para manter a constância.'
+      ? 'Hoje vale proteger a constancia e reduzir carga se necessario.'
       : aiAnalysis?.currentRiskLevel === 'medium'
-      ? 'Você está bem, mas precisa manter o ritmo.'
-      : 'Seu plano está estável. Continue assim.';
+      ? 'Seu ritmo esta bom, mas ainda pede cuidado com continuidade.'
+      : 'Seu plano esta estavel. Continue no ritmo que esta funcionando.';
 
-  const handleApplyAdaptivePlan = useCallback(() => {
+  const weakestPracticeEntry = useMemo(() => {
+    return sortSubjectPerformance(subjectPerformance)[0] ?? null;
+  }, [subjectPerformance]);
+  const dailyRecommendation = useMemo<PracticeRecommendation | null>(() => {
+    return (
+      practiceRecommendations.find((recommendation) => recommendation.mode === 'daily') ??
+      null
+    );
+  }, [practiceRecommendations]);
+
+  const weakSubject = weakestPracticeEntry?.subject ?? aiAnalysis?.hardestSubject ?? null;
+  const weakSubjectAccuracy = weakestPracticeEntry?.accuracy ?? null;
+
+  function handleApplyAdaptivePlan() {
     applyAdaptivePlan();
     setAdaptiveFeedback('Ajustes aplicados ao seu cronograma.');
-  }, [applyAdaptivePlan]);
+  }
+
+  function handleGoToPractice() {
+    router.push('/practice' as Href);
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -147,26 +209,25 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroBig}>
+        <View style={styles.hero}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroBadge}>
               <Text style={styles.heroBadgeText}>AprovAI</Text>
             </View>
 
-            <View style={styles.riskPill}>
-              <Text style={styles.riskPillText}>{riskLabel}</Text>
+            <View style={styles.riskBadge}>
+              <Text style={styles.riskBadgeText}>{riskLabel}</Text>
             </View>
           </View>
 
           <Text style={styles.heroTitle}>
-            {setupData?.concurso || 'Seu plano inteligente'}
+            {setupData?.concurso || 'Seu painel inteligente'}
           </Text>
-
           <Text style={styles.heroSubtitle}>{riskMessage}</Text>
         </View>
 
-        {adaptiveSuggestions?.length > 0 && (
-          <View style={styles.adaptiveCardSlot}>
+        {adaptiveSuggestions?.length > 0 ? (
+          <View style={styles.adaptiveSlot}>
             <AdaptiveSuggestionsCard
               suggestions={adaptiveSuggestions}
               onApply={handleApplyAdaptivePlan}
@@ -176,130 +237,102 @@ export default function HomeScreen() {
               <Text style={styles.adaptiveFeedback}>{adaptiveFeedback}</Text>
             ) : null}
           </View>
-        )}
+        ) : null}
+
+        <View style={styles.widgetRow}>
+          <CountdownRingCard data={widgetSnapshot.countdownRing} />
+          <DailyPracticeCard
+            recommendation={dailyRecommendation}
+            currentSession={currentPracticeSession}
+            onPress={handleGoToPractice}
+          />
+        </View>
+
+        <NextBlockCard
+          data={widgetSnapshot.nextBlock}
+          onPress={nextBlock ? () => completeBlockById(nextBlock.id) : undefined}
+        />
+
+        <AIDailySignalCard data={widgetSnapshot.aiDailySignal} />
+
+        <WeakSubjectCard
+          subject={weakSubject}
+          accuracy={weakSubjectAccuracy}
+          helperText={
+            weakestPracticeEntry
+              ? 'Materia com pior precisao recente nas sessoes curtas.'
+              : aiAnalysis?.hardestSubject
+              ? 'Ainda sem pratica suficiente. Usando leitura do comportamento.'
+              : 'A pratica vai mostrar qual materia esta precisando de reforco.'
+          }
+          onPress={handleGoToPractice}
+        />
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{consistency}%</Text>
-            <Text style={styles.statLabel}>Consistência</Text>
+            <Text style={styles.statLabel}>Consistencia</Text>
           </View>
 
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{completionRate}%</Text>
-            <Text style={styles.statLabel}>Conclusão</Text>
+            <Text style={styles.statLabel}>Conclusao</Text>
+          </View>
+
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{practiceSummary.accuracy}%</Text>
+            <Text style={styles.statLabel}>Acerto em pratica</Text>
           </View>
         </View>
 
-        <View style={styles.cardHighlight}>
-          <Text style={styles.cardTitleLight}>Agora</Text>
-
-          {nextBlock ? (
-            <>
-              <Text style={styles.bigText}>
-                {nextBlock.subject || 'Bloco de estudo'}
-              </Text>
-
-              <Text style={styles.smallText}>
-                {nextBlock.time ? `${nextBlock.time} • ` : ''}
-                {formatDuration(nextBlock.duration)}
-              </Text>
-
-              <Pressable
-                style={styles.ctaButton}
-                onPress={() => completeBlockById(nextBlock.id)}
-              >
-                <Text style={styles.ctaText}>Concluir bloco</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <Text style={styles.bigText}>Dia concluído 🎯</Text>
-              <Text style={styles.smallText}>
-                Você finalizou tudo que estava previsto para hoje.
-              </Text>
-            </>
-          )}
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Progresso de consistência</Text>
-
-          <View style={styles.barContainer}>
-            <View style={[styles.bar, { width: `${consistency}%` }]} />
-          </View>
-
-          <Text style={styles.percent}>{consistency}% da sua consistência ideal</Text>
-        </View>
-
-        <View style={styles.streakBox}>
+        <View style={styles.streakCard}>
           <View>
-            <Text style={styles.streakBig}>🔥 {streak?.currentStreak ?? 0}</Text>
+            <Text style={styles.streakValue}>{streak?.currentStreak ?? 0}</Text>
             <Text style={styles.streakLabel}>dias seguidos</Text>
           </View>
 
           <View style={styles.streakDivider} />
 
           <View>
-            <Text style={styles.streakSideValue}>{streak?.bestStreak ?? 0}</Text>
-            <Text style={styles.streakSideLabel}>melhor sequência</Text>
+            <Text style={styles.streakValue}>{dailyRecommendation?.totalQuestions ?? 0}</Text>
+            <Text style={styles.streakLabel}>questoes sugeridas</Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Insights</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.cardTitle}>Hoje</Text>
 
-          <View style={styles.insightItem}>
-            <Text style={styles.insightLabel}>Melhor horário</Text>
-            <Text style={styles.insightValue}>
-              {aiAnalysis?.bestStudyPeriod || '---'}
-            </Text>
+            <Pressable onPress={() => router.push('/schedule' as Href)}>
+              <Text style={styles.linkText}>Abrir cronograma</Text>
+            </Pressable>
           </View>
-
-          <View style={styles.insightItem}>
-            <Text style={styles.insightLabel}>Matéria crítica</Text>
-            <Text style={styles.insightValue}>
-              {aiAnalysis?.hardestSubject || '---'}
-            </Text>
-          </View>
-
-          <View style={styles.insightItem}>
-            <Text style={styles.insightLabel}>Carga sugerida</Text>
-            <Text style={styles.insightValue}>
-              {aiAnalysis?.suggestedLoadFactor
-                ? `${Math.round(aiAnalysis.suggestedLoadFactor * 100)}%`
-                : '---'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Hoje</Text>
 
           {todayBlocks.length === 0 ? (
             <Text style={styles.emptyText}>Nenhum bloco programado para hoje.</Text>
           ) : (
-            todayBlocks.map((b) => (
-              <View key={b.id} style={styles.blockRow}>
+            todayBlocks.map((block) => (
+              <View key={block.id} style={styles.blockRow}>
                 <View style={styles.blockLeft}>
                   <Text style={styles.blockSubject}>
-                    {b.subject || 'Bloco de estudo'}
+                    {block.subject || 'Bloco de estudo'}
                   </Text>
                   <Text style={styles.blockMeta}>
-                    {b.time ? `${b.time} • ` : ''}
-                    {formatDuration(b.duration)}
+                    {block.time ? `${block.time} • ` : ''}
+                    {formatDuration(block.duration)}
                   </Text>
                 </View>
 
-                {b.completed ? (
+                {block.completed ? (
                   <View style={styles.doneBadge}>
-                    <Text style={styles.doneBadgeText}>Concluído</Text>
+                    <Text style={styles.doneBadgeText}>Concluido</Text>
                   </View>
                 ) : (
                   <Pressable
-                    style={styles.completeMiniButton}
-                    onPress={() => completeBlockById(b.id)}
+                    style={styles.completeButton}
+                    onPress={() => completeBlockById(block.id)}
                   >
-                    <Text style={styles.completeMiniButtonText}>Marcar</Text>
+                    <Text style={styles.completeButtonText}>Marcar</Text>
                   </Pressable>
                 )}
               </View>
@@ -321,16 +354,16 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 16,
   },
-
-  heroBig: {
+  hero: {
     backgroundColor: '#6366F1',
+    borderRadius: 24,
     padding: 20,
-    borderRadius: 22,
+    gap: 10,
   },
   heroTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   heroBadge: {
     backgroundColor: 'rgba(255,255,255,0.18)',
@@ -343,30 +376,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  riskPill: {
+  riskBadge: {
     backgroundColor: 'rgba(15,23,42,0.22)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
-  riskPillText: {
+  riskBadgeText: {
     color: '#E0E7FF',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   heroTitle: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 24,
-    fontWeight: '700',
-    marginTop: 16,
+    fontWeight: '800',
+    marginTop: 6,
   },
   heroSubtitle: {
     color: '#E0E7FF',
-    marginTop: 8,
+    fontSize: 14,
     lineHeight: 20,
   },
-  adaptiveCardSlot: {
-    marginVertical: 4,
+  adaptiveSlot: {
     gap: 8,
   },
   adaptiveFeedback: {
@@ -375,7 +407,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 4,
   },
-
+  widgetRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   statsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -389,92 +424,29 @@ const styles = StyleSheet.create({
   statValue: {
     color: '#FFFFFF',
     fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontWeight: '800',
   },
   statLabel: {
     color: '#94A3B8',
-    fontSize: 13,
+    fontSize: 12,
+    marginTop: 4,
   },
-
-  card: {
+  streakCard: {
     backgroundColor: '#1E293B',
-    padding: 16,
-    borderRadius: 18,
-  },
-  cardHighlight: {
-    backgroundColor: '#4F46E5',
-    padding: 18,
     borderRadius: 20,
-  },
-  cardTitle: {
-    color: '#CBD5F5',
-    marginBottom: 12,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  cardTitleLight: {
-    color: '#E0E7FF',
-    marginBottom: 10,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  bigText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  smallText: {
-    color: '#E0E7FF',
-    marginTop: 8,
-    lineHeight: 20,
-  },
-
-  ctaButton: {
-    marginTop: 14,
-    backgroundColor: '#0F172A',
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  ctaText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-
-  barContainer: {
-    height: 12,
-    backgroundColor: '#334155',
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  bar: {
-    height: 12,
-    backgroundColor: '#6366F1',
-    borderRadius: 999,
-  },
-  percent: {
-    color: '#CBD5F5',
-    marginTop: 10,
-    fontSize: 13,
-  },
-
-  streakBox: {
-    backgroundColor: '#1E293B',
-    borderRadius: 18,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  streakBig: {
+  streakValue: {
     color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
   },
   streakLabel: {
     color: '#94A3B8',
+    fontSize: 13,
     marginTop: 4,
   },
   streakDivider: {
@@ -483,35 +455,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     marginHorizontal: 16,
   },
-  streakSideValue: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '700',
+  card: {
+    backgroundColor: '#1E293B',
+    borderRadius: 20,
+    padding: 16,
   },
-  streakSideLabel: {
-    color: '#94A3B8',
-    marginTop: 4,
-  },
-
-  insightItem: {
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 12,
   },
-  insightLabel: {
-    color: '#94A3B8',
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  insightValue: {
+  cardTitle: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
   },
-
+  linkText: {
+    color: '#A5B4FC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   emptyText: {
     color: '#94A3B8',
-    fontStyle: 'italic',
+    fontSize: 14,
+    lineHeight: 20,
   },
-
   blockRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -527,7 +496,7 @@ const styles = StyleSheet.create({
   blockSubject: {
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   blockMeta: {
     color: '#94A3B8',
@@ -536,22 +505,22 @@ const styles = StyleSheet.create({
   },
   doneBadge: {
     backgroundColor: 'rgba(34,197,94,0.15)',
+    borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
   },
   doneBadgeText: {
     color: '#22C55E',
     fontSize: 12,
     fontWeight: '700',
   },
-  completeMiniButton: {
+  completeButton: {
     backgroundColor: '#6366F1',
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
   },
-  completeMiniButtonText: {
+  completeButtonText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
