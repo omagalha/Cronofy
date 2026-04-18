@@ -13,12 +13,15 @@ export type SelectQuestionBankItemsInput = {
   mode?: PracticeBuildMode;
   practiceSessions?: PracticeSession[];
   subjectPerformance?: SubjectPerformance[];
+  excludeQuestionIds?: string[];
+  todayTopics?: string[];
 };
 
 type SubjectHistorySnapshot = {
   recentQuestionIds: Set<string>;
   weakTopics: Set<string>;
   weakTags: Set<string>;
+  studiedTodayTopics: Set<string>;
   preferredDifficulties: QuestionDifficulty[];
 };
 
@@ -30,12 +33,12 @@ function normalizeText(value?: string | null): string {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function matchesSubject(candidate: string, requested: string) {
-  return normalizeText(candidate) === normalizeText(requested);
+function getQuestionBankItemId(question: Pick<QuestionBankItem, 'id' | 'questionId'>): string {
+  return question.questionId || question.id;
 }
 
-function getQuestionBankItemId(question: QuestionBankItem): string {
-  return question.questionId || question.id;
+function matchesSubject(candidate: string, requested: string) {
+  return normalizeText(candidate) === normalizeText(requested);
 }
 
 function getSubjectBank(subject: string): QuestionBankItem[] {
@@ -104,6 +107,7 @@ function getSubjectHistorySnapshot(input: SelectQuestionBankItemsInput): Subject
     recentQuestionIds,
     weakTopics,
     weakTags,
+    studiedTodayTopics: new Set((input.todayTopics ?? []).map((topic) => normalizeText(topic))),
     preferredDifficulties,
   };
 }
@@ -136,6 +140,10 @@ function scoreQuestion(
     score += 3;
   }
 
+  if (history.studiedTodayTopics.has(normalizeText(question.topic))) {
+    score += 2;
+  }
+
   score += getDifficultyScore(question.difficulty, history.preferredDifficulties);
 
   return score;
@@ -161,18 +169,28 @@ export function selectQuestionBankItems(
   }
 
   const history = getSubjectHistorySnapshot(input);
+  const excludedIds = new Set(input.excludeQuestionIds ?? []);
 
   return [...subjectBank]
+    .filter((question) => !excludedIds.has(getQuestionBankItemId(question)))
     .sort((a, b) => {
       const scoreDiff = scoreQuestion(b, history) - scoreQuestion(a, history);
       if (scoreDiff !== 0) return scoreDiff;
 
       if (a.difficulty !== b.difficulty) {
-        return getDifficultyScore(b.difficulty, history.preferredDifficulties) -
-          getDifficultyScore(a.difficulty, history.preferredDifficulties);
+        return (
+          getDifficultyScore(b.difficulty, history.preferredDifficulties) -
+          getDifficultyScore(a.difficulty, history.preferredDifficulties)
+        );
       }
 
       return getQuestionBankItemId(a).localeCompare(getQuestionBankItemId(b));
     })
     .slice(0, input.totalQuestions);
 }
+
+export const questionBankEngine = {
+  getAvailableSubjects: listQuestionBankSubjects,
+  hasCoverage: hasQuestionBankCoverage,
+  selectQuestions: selectQuestionBankItems,
+};

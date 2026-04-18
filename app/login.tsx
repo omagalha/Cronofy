@@ -1,14 +1,14 @@
 import { router } from 'expo-router';
 import React from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Alert,
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    Image,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppContext } from '../context/AppContext';
 
 export default function LoginScreen() {
@@ -18,7 +18,7 @@ export default function LoginScreen() {
     try {
       await loginWithGoogle();
       router.replace('/');
-    } catch (error) {
+      } catch (error) {
       Alert.alert('Nao foi possivel entrar', 'Tente novamente em instantes.');
     }
   }
