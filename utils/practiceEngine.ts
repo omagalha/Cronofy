@@ -6,10 +6,12 @@ import {
   PracticeSession,
   PracticeSessionSource,
   PracticeSummary,
+  QuestionBankItem,
   QuestionResult,
   SubjectPracticeSignal,
   SubjectPerformance,
 } from '../apps/shared/types/practice';
+import { selectQuestionBankItems } from './practice/questionBankEngine';
 import { ScheduleDay } from './scheduleEngine';
 
 export interface BuildPracticeSessionInput {
@@ -27,6 +29,7 @@ export interface BuildPracticeSessionResult {
   suggestedBlockIds: string[];
   totalQuestions: number;
   source: PracticeSessionSource;
+  questions: QuestionBankItem[];
 }
 
 type SubjectCandidate = {
@@ -368,18 +371,29 @@ export function buildPracticeSession(
   input: BuildPracticeSessionInput
 ): BuildPracticeSessionResult | null {
   const candidates = getCandidateOrder(input);
-  const first = candidates[0];
+  for (const candidate of candidates) {
+    const questions = selectQuestionBankItems({
+      subject: candidate.subject,
+      totalQuestions: input.questionCount,
+      mode: input.mode,
+      practiceSessions: input.practiceSessions,
+      subjectPerformance: input.subjectPerformance,
+    });
 
-  if (!first) {
-    return null;
+    if (questions.length === 0) {
+      continue;
+    }
+
+    return {
+      suggestedSubject: candidate.subject,
+      suggestedBlockIds: candidate.blockIds,
+      totalQuestions: questions.length,
+      source: candidate.source,
+      questions,
+    };
   }
 
-  return {
-    suggestedSubject: first.subject,
-    suggestedBlockIds: first.blockIds,
-    totalQuestions: input.questionCount,
-    source: first.source,
-  };
+  return null;
 }
 
 function calculateSessionStats(questionResults: QuestionResult[]) {
@@ -414,10 +428,15 @@ export function createPracticeSessionFromSuggestion(
     finishedAt: null,
     durationSeconds: null,
     questionResults: [],
+    questions: result.questions,
   };
 }
 
 export function buildPracticeQuestionIds(session: PracticeSession): string[] {
+  if (Array.isArray(session.questions) && session.questions.length > 0) {
+    return session.questions.map((question) => question.id);
+  }
+
   return Array.from({ length: session.totalQuestions }, (_, index) => {
     return `${session.id}-question-${index + 1}`;
   });
@@ -429,6 +448,7 @@ export function registerQuestionResult(
   correct: boolean,
   difficulty?: number | null
 ): PracticeSession {
+  const sessionQuestion = session.questions?.find((item) => item.id === questionId);
   const otherResults = session.questionResults.filter(
     (item) => item.questionId !== questionId
   );
@@ -441,6 +461,9 @@ export function registerQuestionResult(
       correct,
       answeredAt: getCurrentTimestamp(),
       difficulty: difficulty ?? null,
+      selectedOptionId: null,
+      correctOptionId: sessionQuestion?.correctOptionId ?? null,
+      topic: sessionQuestion?.topic ?? null,
     },
   ].sort((a, b) => a.questionId.localeCompare(b.questionId));
 
@@ -765,6 +788,33 @@ export function buildPracticeRecommendations(params: {
   });
 }
 
+function isQuestionBankItem(value: unknown): value is QuestionBankItem {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as QuestionBankItem;
+
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.subject === 'string' &&
+    typeof candidate.topic === 'string' &&
+    typeof candidate.statement === 'string' &&
+    Array.isArray(candidate.options) &&
+    candidate.options.every(
+      (option) =>
+        Boolean(option) &&
+        typeof option.id === 'string' &&
+        typeof option.text === 'string'
+    ) &&
+    typeof candidate.correctOptionId === 'string' &&
+    typeof candidate.explanation === 'string' &&
+    (candidate.difficulty === 'easy' ||
+      candidate.difficulty === 'medium' ||
+      candidate.difficulty === 'hard') &&
+    Array.isArray(candidate.tags) &&
+    candidate.tags.every((tag) => typeof tag === 'string')
+  );
+}
+
 function isQuestionResult(value: unknown): value is QuestionResult {
   if (!value || typeof value !== 'object') return false;
 
@@ -777,7 +827,16 @@ function isQuestionResult(value: unknown): value is QuestionResult {
     typeof candidate.answeredAt === 'string' &&
     (typeof candidate.difficulty === 'number' ||
       candidate.difficulty === null ||
-      typeof candidate.difficulty === 'undefined')
+      typeof candidate.difficulty === 'undefined') &&
+    (typeof candidate.selectedOptionId === 'string' ||
+      candidate.selectedOptionId === null ||
+      typeof candidate.selectedOptionId === 'undefined') &&
+    (typeof candidate.correctOptionId === 'string' ||
+      candidate.correctOptionId === null ||
+      typeof candidate.correctOptionId === 'undefined') &&
+    (typeof candidate.topic === 'string' ||
+      candidate.topic === null ||
+      typeof candidate.topic === 'undefined')
   );
 }
 
@@ -810,6 +869,9 @@ export function isPracticeSession(value: unknown): value is PracticeSession {
     (typeof candidate.durationSeconds === 'number' ||
       candidate.durationSeconds === null ||
       typeof candidate.durationSeconds === 'undefined') &&
+    (Array.isArray(candidate.questions)
+      ? candidate.questions.every(isQuestionBankItem)
+      : typeof candidate.questions === 'undefined') &&
     Array.isArray(candidate.questionResults) &&
     candidate.questionResults.every(isQuestionResult)
   );
@@ -882,5 +944,6 @@ export function migrateLegacyPracticeSession(
     finishedAt: candidate.completedAt ?? null,
     durationSeconds: null,
     questionResults,
+    questions: [],
   };
 }

@@ -32,7 +32,7 @@ import {
   isPracticeSession,
   migrateLegacyPracticeSession,
   registerQuestionResult,
-} from '../utils/practiceEngine';
+} from '../utils/practice/practiceEngine';
 
 type StartPracticeSessionOptions = {
   mode?: PracticeBuildMode;

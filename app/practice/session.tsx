@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { buildPracticeQuestionIds } from '../../utils/practiceEngine';
+import { buildPracticeQuestionIds } from '../../utils/practice/practiceEngine';
 import { useAppContext } from '../../context/AppContext';
 
 export default function PracticeSessionScreen() {
@@ -26,6 +26,25 @@ export default function PracticeSessionScreen() {
     () => (session ? buildPracticeQuestionIds(session) : []),
     [session]
   );
+  const practiceQuestions = useMemo(() => {
+    if (!session) return [];
+
+    if (Array.isArray(session.questions) && session.questions.length > 0) {
+      return session.questions;
+    }
+
+    return questionIds.map((questionId, index) => ({
+      id: questionId,
+      subject: session.subject,
+      topic: session.subject,
+      statement: `Questao ${index + 1}. Resolva no seu material e marque o resultado aqui.`,
+      options: [],
+      correctOptionId: '',
+      explanation: '',
+      difficulty: 'medium' as const,
+      tags: [],
+    }));
+  }, [questionIds, session]);
   const answersById = useMemo(() => {
     return new Map(
       (session?.questionResults ?? []).map((result) => [result.questionId, result])
@@ -36,7 +55,9 @@ export default function PracticeSessionScreen() {
     return session?.questionResults.length ?? 0;
   }, [session]);
 
-  const canFinish = session ? questionIds.every((questionId) => answersById.has(questionId)) : false;
+  const canFinish = session
+    ? practiceQuestions.every((question) => answersById.has(question.id))
+    : false;
 
   function handleFinishSession() {
     const result = finishPracticeSession();
@@ -120,18 +141,36 @@ export default function PracticeSessionScreen() {
         </View>
 
         <View style={styles.list}>
-          {questionIds.map((questionId, index) => {
-            const answer = answersById.get(questionId);
+          {practiceQuestions.map((question, index) => {
+            const answer = answersById.get(question.id);
+            const hasStructuredQuestion = question.options.length > 0;
 
             return (
-              <View key={questionId} style={styles.questionCard}>
+              <View key={question.id} style={styles.questionCard}>
                 <View style={styles.questionHeader}>
                   <Text style={styles.questionIndex}>Questao {index + 1}</Text>
-                  <Text style={styles.questionSubject}>{session.subject}</Text>
+                  <Text style={styles.questionSubject}>{question.topic}</Text>
                 </View>
 
+                <Text style={styles.questionStatement}>{question.statement}</Text>
+
+                {hasStructuredQuestion ? (
+                  <View style={styles.optionList}>
+                    {question.options.map((option, optionIndex) => (
+                      <View key={option.id} style={styles.optionRow}>
+                        <Text style={styles.optionLabel}>
+                          {String.fromCharCode(65 + optionIndex)}.
+                        </Text>
+                        <Text style={styles.optionText}>{option.text}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
                 <Text style={styles.questionHelp}>
-                  Resolva a questao no seu material e marque o resultado aqui.
+                  {hasStructuredQuestion
+                    ? 'Resolva agora e marque se acertou ou errou.'
+                    : 'Resolva a questao no seu material e marque o resultado aqui.'}
                 </Text>
 
                 <View style={styles.actionRow}>
@@ -140,7 +179,7 @@ export default function PracticeSessionScreen() {
                       styles.answerButton,
                       answer?.correct === false && styles.answerButtonIncorrect,
                     ]}
-                    onPress={() => answerPracticeQuestion(questionId, false)}
+                    onPress={() => answerPracticeQuestion(question.id, false)}
                   >
                     <Text style={styles.answerButtonText}>Errei</Text>
                   </Pressable>
@@ -150,11 +189,18 @@ export default function PracticeSessionScreen() {
                       styles.answerButton,
                       answer?.correct === true && styles.answerButtonCorrect,
                     ]}
-                    onPress={() => answerPracticeQuestion(questionId, true)}
+                    onPress={() => answerPracticeQuestion(question.id, true)}
                   >
                     <Text style={styles.answerButtonText}>Acertei</Text>
                   </Pressable>
                 </View>
+
+                {answer && question.explanation ? (
+                  <View style={styles.explanationBox}>
+                    <Text style={styles.explanationTitle}>Explicacao rapida</Text>
+                    <Text style={styles.explanationText}>{question.explanation}</Text>
+                  </View>
+                ) : null}
               </View>
             );
           })}
@@ -274,6 +320,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  questionStatement: {
+    color: '#E2E8F0',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  optionList: {
+    gap: 8,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-start',
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  optionLabel: {
+    color: '#A5B4FC',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  optionText: {
+    flex: 1,
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 19,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 10,
@@ -299,6 +373,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+  },
+  explanationBox: {
+    backgroundColor: 'rgba(99,102,241,0.14)',
+    borderRadius: 14,
+    padding: 12,
+    gap: 4,
+  },
+  explanationTitle: {
+    color: '#C7D2FE',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  explanationText: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    lineHeight: 19,
   },
   footer: {
     position: 'absolute',
