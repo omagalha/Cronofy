@@ -1,6 +1,6 @@
-import { AIAnalysis } from '../context/AIContext';
-import { IReviewItem } from '../apps/shared/types/review';
-import {
+import type { AIAnalysis } from '../context/AIContext';
+import type { IReviewItem } from '../apps/shared/types/review';
+import type {
   PracticeAnswerValue,
   PracticeBuildMode,
   PracticeRecommendation,
@@ -12,8 +12,11 @@ import {
   SubjectPracticeSignal,
   SubjectPerformance,
 } from '../apps/shared/types/practice';
-import { selectQuestionBankItems } from './practice/questionBankEngine';
-import { ScheduleDay } from './scheduleEngine';
+import {
+  listQuestionBankSubjects,
+  selectQuestionBankItems,
+} from './practice/questionBankEngine';
+import type { ScheduleDay } from './scheduleEngine';
 
 export interface BuildPracticeSessionInput {
   todaySchedule: ScheduleDay[];
@@ -23,6 +26,8 @@ export interface BuildPracticeSessionInput {
   reviewQueue?: IReviewItem[];
   mode: PracticeBuildMode;
   questionCount: 5 | 10;
+  allowSubjectFallback?: boolean;
+  debug?: boolean;
 }
 
 export interface BuildPracticeSessionResult {
@@ -37,6 +42,38 @@ type SubjectCandidate = {
   subject: string;
   source: PracticeSessionSource;
   blockIds: string[];
+};
+
+type SubjectSignalKind =
+  | 'daily_pending'
+  | 'daily_studied'
+  | 'low_confidence'
+  | 'weak_subject'
+  | 'urgent_review';
+
+type SubjectSignalCandidate = SubjectCandidate & {
+  kind: SubjectSignalKind;
+  reason: string;
+  weight: number;
+};
+
+type RankedSubjectCandidate = SubjectCandidate & {
+  score: number;
+  reasons: string[];
+  availableQuestions: number;
+  totalSessions: number;
+  recentMatches: number;
+};
+
+type RankedSubjectCandidateDraft = {
+  subject: string;
+  source: PracticeSessionSource;
+  sourcePriority: number;
+  blockIds: Set<string>;
+  score: number;
+  reasons: string[];
+  totalSessions: number;
+  recentMatches: number;
 };
 
 type ScheduleBlock = ScheduleDay['blocks'][number];
@@ -93,6 +130,10 @@ export function normalizePracticeSubject(subject?: string | null): string {
     .trim();
 }
 
+function matchesSubject(candidate: string, requested: string) {
+  return normalizeText(candidate) === normalizeText(requested);
+}
+
 function getCurrentTimestamp() {
   return new Date().toISOString();
 }
@@ -143,6 +184,10 @@ function uniqueSubjects(subjects: string[]): string[] {
   }
 
   return result;
+}
+
+function formatScoreReason(delta: number, reason: string): string {
+  return `${delta >= 0 ? '+' : ''}${delta} ${reason}`;
 }
 
 function getBlocksFromDays(days: ScheduleDay[]) {
@@ -291,7 +336,10 @@ function getWeakSubjectCandidate(
   subjectPerformance: SubjectPerformance[],
   fallbackSubject?: string | null
 ): SubjectCandidate | null {
-  const weakest = sortSubjectPerformance(subjectPerformance)[0]?.subject;
+  const eligibleSubjects = subjectPerformance.filter(
+    (item) => item.totalSessions >= 2 || item.totalQuestions >= 10
+  );
+  const weakest = sortSubjectPerformance(eligibleSubjects)[0]?.subject;
   const subject = weakest ?? normalizePracticeSubject(fallbackSubject);
 
   if (!subject) return null;
@@ -328,14 +376,16 @@ function getUrgentReviewCandidate(reviewQueue?: IReviewItem[]): SubjectCandidate
   };
 }
 
-function dedupeCandidates(candidates: Array<SubjectCandidate | null>): SubjectCandidate[] {
+function dedupeSignalCandidates(
+  candidates: Array<SubjectSignalCandidate | null>
+): SubjectSignalCandidate[] {
   const seen = new Set<string>();
-  const result: SubjectCandidate[] = [];
+  const result: SubjectSignalCandidate[] = [];
 
   for (const candidate of candidates) {
     if (!candidate) continue;
 
-    const key = `${candidate.source}:${normalizeText(candidate.subject)}`;
+    const key = `${candidate.kind}:${normalizeText(candidate.subject)}`;
     if (seen.has(key)) continue;
 
     seen.add(key);
@@ -345,7 +395,9 @@ function dedupeCandidates(candidates: Array<SubjectCandidate | null>): SubjectCa
   return result;
 }
 
-function getCandidateOrder(input: BuildPracticeSessionInput): SubjectCandidate[] {
+function getSubjectSignalCandidates(
+  input: BuildPracticeSessionInput
+): SubjectSignalCandidate[] {
   const dailyPending = getDailyPendingCandidate(input.todaySchedule);
   const dailyStudied = getDailyStudiedCandidate(
     input.todaySchedule,
@@ -358,62 +410,420 @@ function getCandidateOrder(input: BuildPracticeSessionInput): SubjectCandidate[]
   );
   const urgentReview = getUrgentReviewCandidate(input.reviewQueue);
 
-  switch (input.mode) {
-    case 'weak_subject':
-      return dedupeCandidates([
-        weakSubject,
-        lowConfidence,
-        urgentReview,
-        dailyPending,
-        dailyStudied,
-      ]);
-    case 'review':
-      return dedupeCandidates([
-        urgentReview,
-        lowConfidence,
-        weakSubject,
-        dailyPending,
-        dailyStudied,
-      ]);
-    case 'daily':
-    default:
-      return dedupeCandidates([
-        dailyStudied,
-        lowConfidence,
-        dailyPending,
-        weakSubject,
-        urgentReview,
-      ]);
+  const weightMap: Record<PracticeBuildMode, Record<SubjectSignalKind, number>> = {
+    daily: {
+      daily_pending: 14,
+      daily_studied: 24,
+      low_confidence: 18,
+      weak_subject: 10,
+      urgent_review: 8,
+    },
+    weak_subject: {
+      daily_pending: 8,
+      daily_studied: 6,
+      low_confidence: 16,
+      weak_subject: 24,
+      urgent_review: 14,
+    },
+    review: {
+      daily_pending: 8,
+      daily_studied: 6,
+      low_confidence: 18,
+      weak_subject: 12,
+      urgent_review: 24,
+    },
+  };
+
+  return dedupeSignalCandidates([
+    dailyPending && {
+      ...dailyPending,
+      kind: 'daily_pending',
+      weight: weightMap[input.mode].daily_pending,
+      reason: 'materia pendente no plano do dia',
+    },
+    dailyStudied && {
+      ...dailyStudied,
+      kind: 'daily_studied',
+      weight: weightMap[input.mode].daily_studied,
+      reason: 'bloco concluido hoje pedindo validacao',
+    },
+    lowConfidence && {
+      ...lowConfidence,
+      kind: 'low_confidence',
+      weight: weightMap[input.mode].low_confidence,
+      reason: 'baixa confianca ou alta dificuldade recente',
+    },
+    weakSubject && {
+      ...weakSubject,
+      kind: 'weak_subject',
+      weight: weightMap[input.mode].weak_subject,
+      reason: 'desempenho indica materia fraca',
+    },
+    urgentReview && {
+      ...urgentReview,
+      kind: 'urgent_review',
+      weight: weightMap[input.mode].urgent_review,
+      reason: 'revisao urgente pendente',
+    },
+  ]);
+}
+
+function getFinishedPracticeSessions(
+  practiceSessions: PracticeSession[] = []
+): PracticeSession[] {
+  return [...practiceSessions]
+    .filter((session) => session.status === 'completed' || session.status === 'abandoned')
+    .sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt));
+}
+
+function getSubjectSessionStats(
+  subject: string,
+  practiceSessions: PracticeSession[] = []
+): {
+  totalSessions: number;
+  recentMatches: number;
+  mostRecentMatch: boolean;
+} {
+  const finishedSessions = getFinishedPracticeSessions(practiceSessions);
+  const recentSessions = finishedSessions.slice(0, 3);
+  const totalSessions = finishedSessions.filter((session) =>
+    matchesSubject(session.subject, subject)
+  ).length;
+  const recentMatches = recentSessions.filter((session) =>
+    matchesSubject(session.subject, subject)
+  ).length;
+
+  return {
+    totalSessions,
+    recentMatches,
+    mostRecentMatch:
+      recentSessions.length > 0 && matchesSubject(recentSessions[0].subject, subject),
+  };
+}
+
+function getSubjectPerformanceEntry(
+  subject: string,
+  subjectPerformance: SubjectPerformance[]
+): SubjectPerformance | undefined {
+  return subjectPerformance.find((item) => matchesSubject(item.subject, subject));
+}
+
+function ensureRankedSubjectCandidate(
+  candidates: Map<string, RankedSubjectCandidateDraft>,
+  subject: string
+): RankedSubjectCandidateDraft {
+  const key = normalizeText(subject);
+  const existing = candidates.get(key);
+
+  if (existing) {
+    return existing;
   }
+
+  const nextCandidate: RankedSubjectCandidateDraft = {
+    subject,
+    source: 'manual',
+    sourcePriority: 0,
+    blockIds: new Set<string>(),
+    score: 0,
+    reasons: [],
+    totalSessions: 0,
+    recentMatches: 0,
+  };
+
+  candidates.set(key, nextCandidate);
+  return nextCandidate;
+}
+
+function addCandidateScore(params: {
+  candidates: Map<string, RankedSubjectCandidateDraft>;
+  subject: string;
+  delta: number;
+  reason: string;
+  source?: PracticeSessionSource;
+  sourcePriority?: number;
+  blockIds?: string[];
+}) {
+  const candidate = ensureRankedSubjectCandidate(params.candidates, params.subject);
+
+  candidate.score += params.delta;
+  candidate.reasons.push(formatScoreReason(params.delta, params.reason));
+
+  if (
+    params.source &&
+    (params.sourcePriority ?? 0) >= candidate.sourcePriority
+  ) {
+    candidate.source = params.source;
+    candidate.sourcePriority = params.sourcePriority ?? 0;
+  }
+
+  for (const blockId of params.blockIds ?? []) {
+    candidate.blockIds.add(blockId);
+  }
+}
+
+function applyGenericSubjectSignals(
+  params: {
+    input: BuildPracticeSessionInput;
+    candidates: Map<string, RankedSubjectCandidateDraft>;
+  }
+) {
+  const repeatPenaltyBase = params.input.mode === 'weak_subject' ? 4 : 6;
+
+  for (const candidate of params.candidates.values()) {
+    const sessionStats = getSubjectSessionStats(
+      candidate.subject,
+      params.input.practiceSessions
+    );
+    const performance = getSubjectPerformanceEntry(
+      candidate.subject,
+      params.input.subjectPerformance
+    );
+
+    candidate.totalSessions = sessionStats.totalSessions;
+    candidate.recentMatches = sessionStats.recentMatches;
+
+    if (params.input.allowSubjectFallback) {
+      addCandidateScore({
+        candidates: params.candidates,
+        subject: candidate.subject,
+        delta: 1,
+        reason: 'cobertura disponivel no banco interno',
+      });
+    }
+
+    if (sessionStats.totalSessions === 0) {
+      addCandidateScore({
+        candidates: params.candidates,
+        subject: candidate.subject,
+        delta: 4,
+        reason: 'materia ainda pouco explorada na pratica',
+      });
+    } else if (sessionStats.totalSessions === 1) {
+      addCandidateScore({
+        candidates: params.candidates,
+        subject: candidate.subject,
+        delta: 2,
+        reason: 'materia com pouco historico acumulado',
+      });
+    }
+
+    if (performance) {
+      if (performance.recentAccuracy <= 50) {
+        addCandidateScore({
+          candidates: params.candidates,
+          subject: candidate.subject,
+          delta: 8,
+          reason: `acuracia recente baixa (${performance.recentAccuracy}%)`,
+        });
+      } else if (performance.recentAccuracy <= 60) {
+        addCandidateScore({
+          candidates: params.candidates,
+          subject: candidate.subject,
+          delta: 6,
+          reason: `acuracia recente sensivel (${performance.recentAccuracy}%)`,
+        });
+      } else if (performance.recentAccuracy <= 75) {
+        addCandidateScore({
+          candidates: params.candidates,
+          subject: candidate.subject,
+          delta: 3,
+          reason: `acuracia recente mediana (${performance.recentAccuracy}%)`,
+        });
+      }
+
+      if (performance.trend === 'down') {
+        addCandidateScore({
+          candidates: params.candidates,
+          subject: candidate.subject,
+          delta: 2,
+          reason: 'tendencia recente de queda',
+        });
+      }
+
+      if (
+        params.input.mode !== 'weak_subject' &&
+        performance.accuracy >= 85 &&
+        performance.recentAccuracy >= 85
+      ) {
+        addCandidateScore({
+          candidates: params.candidates,
+          subject: candidate.subject,
+          delta: -2,
+          reason: 'materia forte recebe leve cooldown',
+        });
+      }
+    }
+
+    if (sessionStats.recentMatches > 0) {
+      addCandidateScore({
+        candidates: params.candidates,
+        subject: candidate.subject,
+        delta: -(sessionStats.recentMatches * repeatPenaltyBase),
+        reason: `repetida em ${sessionStats.recentMatches} das ultimas 3 sessoes`,
+      });
+    }
+
+    if (sessionStats.mostRecentMatch) {
+      addCandidateScore({
+        candidates: params.candidates,
+        subject: candidate.subject,
+        delta: -repeatPenaltyBase,
+        reason: 'mesma materia da ultima sessao',
+      });
+    }
+  }
+}
+
+function rankSubjectCandidates(
+  input: BuildPracticeSessionInput
+): RankedSubjectCandidate[] {
+  const candidates = new Map<string, RankedSubjectCandidateDraft>();
+  const signalCandidates = getSubjectSignalCandidates(input);
+  const fallbackSubjects = input.allowSubjectFallback ? listQuestionBankSubjects() : [];
+  const seedSubjects = input.allowSubjectFallback
+    ? fallbackSubjects
+    : uniqueSubjects(signalCandidates.map((candidate) => candidate.subject));
+
+  for (const subject of seedSubjects) {
+    ensureRankedSubjectCandidate(candidates, subject);
+  }
+
+  for (const signalCandidate of signalCandidates) {
+    addCandidateScore({
+      candidates,
+      subject: signalCandidate.subject,
+      delta: signalCandidate.weight,
+      reason: signalCandidate.reason,
+      source: signalCandidate.source,
+      sourcePriority: signalCandidate.weight,
+      blockIds: signalCandidate.blockIds,
+    });
+  }
+
+  if (candidates.size === 0) {
+    return [];
+  }
+
+  applyGenericSubjectSignals({ input, candidates });
+
+  return Array.from(candidates.values())
+    .map((candidate) => {
+      const availableQuestions = selectQuestionBankItems({
+        subject: candidate.subject,
+        totalQuestions: input.questionCount,
+        mode: input.mode,
+        practiceSessions: input.practiceSessions,
+        subjectPerformance: input.subjectPerformance,
+        debug: false,
+      }).length;
+
+      return {
+        subject: candidate.subject,
+        source: candidate.source,
+        blockIds: Array.from(candidate.blockIds),
+        score: candidate.score,
+        reasons: candidate.reasons,
+        availableQuestions,
+        totalSessions: candidate.totalSessions,
+        recentMatches: candidate.recentMatches,
+      };
+    })
+    .sort((a, b) => {
+      if (a.availableQuestions !== b.availableQuestions) {
+        return b.availableQuestions - a.availableQuestions;
+      }
+
+      if (a.score !== b.score) {
+        return b.score - a.score;
+      }
+
+      if (a.recentMatches !== b.recentMatches) {
+        return a.recentMatches - b.recentMatches;
+      }
+
+      if (a.totalSessions !== b.totalSessions) {
+        return a.totalSessions - b.totalSessions;
+      }
+
+      return a.subject.localeCompare(b.subject);
+    });
+}
+
+function logPracticeSessionSelection(params: {
+  input: BuildPracticeSessionInput;
+  rankedSubjects: RankedSubjectCandidate[];
+  selectedSubject: string | null;
+}) {
+  console.log('[practiceEngine] selected subject:', params.selectedSubject);
+  console.log(
+    '[practiceEngine] ranked subject candidates:',
+    params.rankedSubjects.map((item) => ({
+      subject: item.subject,
+      source: item.source,
+      availableQuestions: item.availableQuestions,
+      totalSessions: item.totalSessions,
+      recentMatches: item.recentMatches,
+      score: item.score,
+      reasons: item.reasons,
+    }))
+  );
 }
 
 export function buildPracticeSession(
   input: BuildPracticeSessionInput
 ): BuildPracticeSessionResult | null {
-  const candidates = getCandidateOrder(input);
-  for (const candidate of candidates) {
-    const questions = selectQuestionBankItems({
-      subject: candidate.subject,
-      totalQuestions: input.questionCount,
-      mode: input.mode,
-      practiceSessions: input.practiceSessions,
-      subjectPerformance: input.subjectPerformance,
-    });
+  const rankedSubjects = rankSubjectCandidates(input);
+  const selectedCandidate =
+    rankedSubjects.find((candidate) => candidate.availableQuestions > 0) ?? null;
 
-    if (questions.length === 0) {
-      continue;
+  if (!selectedCandidate) {
+    if (input.debug) {
+      logPracticeSessionSelection({
+        input,
+        rankedSubjects,
+        selectedSubject: null,
+      });
     }
 
-    return {
-      suggestedSubject: candidate.subject,
-      suggestedBlockIds: candidate.blockIds,
-      totalQuestions: questions.length,
-      source: candidate.source,
-      questions,
-    };
+    return null;
   }
 
-  return null;
+  const questions = selectQuestionBankItems({
+    subject: selectedCandidate.subject,
+    totalQuestions: input.questionCount,
+    mode: input.mode,
+    practiceSessions: input.practiceSessions,
+    subjectPerformance: input.subjectPerformance,
+    debug: input.debug,
+  });
+
+  if (questions.length === 0) {
+    if (input.debug) {
+      logPracticeSessionSelection({
+        input,
+        rankedSubjects,
+        selectedSubject: null,
+      });
+    }
+
+    return null;
+  }
+
+  if (input.debug) {
+    logPracticeSessionSelection({
+      input,
+      rankedSubjects,
+      selectedSubject: selectedCandidate.subject,
+    });
+  }
+
+  return {
+    suggestedSubject: selectedCandidate.subject,
+    suggestedBlockIds: selectedCandidate.blockIds,
+    totalQuestions: questions.length,
+    source: selectedCandidate.source,
+    questions,
+  };
 }
 
 function calculateSessionStats(questionResults: QuestionResult[]) {

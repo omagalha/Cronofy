@@ -284,6 +284,8 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
         reviewQueue,
         mode,
         questionCount,
+        allowSubjectFallback: mode === 'daily',
+        debug: typeof __DEV__ !== 'undefined' ? __DEV__ : false,
       });
 
       if (!suggestion) {

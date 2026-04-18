@@ -1,5 +1,5 @@
 import { questionBankSeed } from '../../data/questionBank/questionBank.seed';
-import {
+import type {
   PracticeBuildMode,
   PracticeSession,
   QuestionBankItem,
@@ -15,6 +15,7 @@ export type SelectQuestionBankItemsInput = {
   subjectPerformance?: SubjectPerformance[];
   excludeQuestionIds?: string[];
   todayTopics?: string[];
+  debug?: boolean;
 };
 
 type SubjectHistorySnapshot = {
@@ -23,6 +24,12 @@ type SubjectHistorySnapshot = {
   weakTags: Set<string>;
   studiedTodayTopics: Set<string>;
   preferredDifficulties: QuestionDifficulty[];
+};
+
+type RankedQuestion = {
+  question: QuestionBankItem;
+  score: number;
+  reasons: string[];
 };
 
 function normalizeText(value?: string | null): string {
@@ -120,33 +127,96 @@ function getDifficultyScore(
   return index === -1 ? 0 : preferredDifficulties.length - index;
 }
 
+function formatScoreReason(delta: number, reason: string): string {
+  return `${delta >= 0 ? '+' : ''}${delta} ${reason}`;
+}
+
 function scoreQuestion(
   question: QuestionBankItem,
   history: SubjectHistorySnapshot
-): number {
+): RankedQuestion {
   let score = 0;
+  const reasons: string[] = [];
 
   if (!history.recentQuestionIds.has(getQuestionBankItemId(question))) {
     score += 6;
+    reasons.push(formatScoreReason(6, 'nao vista recentemente'));
   } else {
     score -= 3;
+    reasons.push(formatScoreReason(-3, 'questao vista recentemente'));
   }
 
   if (history.weakTopics.has(normalizeText(question.topic))) {
     score += 5;
+    reasons.push(formatScoreReason(5, `topico fraco: ${question.topic}`));
   }
 
   if (question.tags.some((tag) => history.weakTags.has(normalizeText(tag)))) {
     score += 3;
+    reasons.push(formatScoreReason(3, 'tag ligada a erro recente'));
   }
 
   if (history.studiedTodayTopics.has(normalizeText(question.topic))) {
     score += 2;
+    reasons.push(formatScoreReason(2, `topico estudado hoje: ${question.topic}`));
   }
 
-  score += getDifficultyScore(question.difficulty, history.preferredDifficulties);
+  const difficultyScore = getDifficultyScore(
+    question.difficulty,
+    history.preferredDifficulties
+  );
+  score += difficultyScore;
+  reasons.push(
+    formatScoreReason(
+      difficultyScore,
+      `dificuldade ${question.difficulty} alinhada a ${history.preferredDifficulties.join(
+        ' > '
+      )}`
+    )
+  );
 
-  return score;
+  return {
+    question,
+    score,
+    reasons,
+  };
+}
+
+function logQuestionBankSelection(params: {
+  input: SelectQuestionBankItemsInput;
+  history: SubjectHistorySnapshot;
+  rankedQuestions: RankedQuestion[];
+  finalQuestions: QuestionBankItem[];
+}) {
+  console.log('[questionBankEngine] selected subject:', params.input.subject);
+  console.log('[questionBankEngine] subject context:', {
+    mode: params.input.mode ?? 'daily',
+    totalQuestions: params.input.totalQuestions,
+    recentQuestionIds: Array.from(params.history.recentQuestionIds),
+    weakTopics: Array.from(params.history.weakTopics),
+    weakTags: Array.from(params.history.weakTags),
+    studiedTodayTopics: Array.from(params.history.studiedTodayTopics),
+    preferredDifficulties: params.history.preferredDifficulties,
+  });
+  console.log(
+    '[questionBankEngine] ranked questions:',
+    params.rankedQuestions.slice(0, 10).map((item) => ({
+      id: item.question.id,
+      topic: item.question.topic,
+      difficulty: item.question.difficulty,
+      score: item.score,
+      reasons: item.reasons,
+    }))
+  );
+  console.log(
+    '[questionBankEngine] selected questions:',
+    params.finalQuestions.map((question) => ({
+      id: question.id,
+      subject: question.subject,
+      topic: question.topic,
+      difficulty: question.difficulty,
+    }))
+  );
 }
 
 export function hasQuestionBankCoverage(subject: string): boolean {
@@ -165,28 +235,48 @@ export function selectQuestionBankItems(
   const subjectBank = getSubjectBank(input.subject);
 
   if (subjectBank.length === 0) {
+    if (input.debug) {
+      console.log('[questionBankEngine] selected subject:', input.subject);
+      console.log('[questionBankEngine] ranked questions:', []);
+      console.log('[questionBankEngine] selected questions:', []);
+    }
     return [];
   }
 
   const history = getSubjectHistorySnapshot(input);
   const excludedIds = new Set(input.excludeQuestionIds ?? []);
 
-  return [...subjectBank]
+  const rankedQuestions = [...subjectBank]
     .filter((question) => !excludedIds.has(getQuestionBankItemId(question)))
+    .map((question) => scoreQuestion(question, history))
     .sort((a, b) => {
-      const scoreDiff = scoreQuestion(b, history) - scoreQuestion(a, history);
+      const scoreDiff = b.score - a.score;
       if (scoreDiff !== 0) return scoreDiff;
 
-      if (a.difficulty !== b.difficulty) {
+      if (a.question.difficulty !== b.question.difficulty) {
         return (
-          getDifficultyScore(b.difficulty, history.preferredDifficulties) -
-          getDifficultyScore(a.difficulty, history.preferredDifficulties)
+          getDifficultyScore(b.question.difficulty, history.preferredDifficulties) -
+          getDifficultyScore(a.question.difficulty, history.preferredDifficulties)
         );
       }
 
-      return getQuestionBankItemId(a).localeCompare(getQuestionBankItemId(b));
-    })
-    .slice(0, input.totalQuestions);
+      return getQuestionBankItemId(a.question).localeCompare(getQuestionBankItemId(b.question));
+    });
+
+  const finalQuestions = rankedQuestions
+    .slice(0, input.totalQuestions)
+    .map((item) => item.question);
+
+  if (input.debug) {
+    logQuestionBankSelection({
+      input,
+      history,
+      rankedQuestions,
+      finalQuestions,
+    });
+  }
+
+  return finalQuestions;
 }
 
 export const questionBankEngine = {
