@@ -34,6 +34,10 @@ function matchesSubject(candidate: string, requested: string) {
   return normalizeText(candidate) === normalizeText(requested);
 }
 
+function getQuestionBankItemId(question: QuestionBankItem): string {
+  return question.questionId || question.id;
+}
+
 function getSubjectBank(subject: string): QuestionBankItem[] {
   return questionBankSeed.filter((item) => matchesSubject(item.subject, subject));
 }
@@ -118,7 +122,7 @@ function scoreQuestion(
 ): number {
   let score = 0;
 
-  if (!history.recentQuestionIds.has(question.id)) {
+  if (!history.recentQuestionIds.has(getQuestionBankItemId(question))) {
     score += 6;
   } else {
     score -= 3;
@@ -168,7 +172,7 @@ export function selectQuestionBankItems(
           getDifficultyScore(a.difficulty, history.preferredDifficulties);
       }
 
-      return a.id.localeCompare(b.id);
+      return getQuestionBankItemId(a).localeCompare(getQuestionBankItemId(b));
     })
     .slice(0, input.totalQuestions);
 }

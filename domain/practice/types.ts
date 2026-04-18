@@ -14,13 +14,18 @@ export type PracticeBuildMode = 'daily' | 'weak_subject' | 'review';
 
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard';
 
+export type PracticeAnswerValue = string | boolean;
+
 export interface QuestionOption {
   id: string;
   text: string;
 }
 
 export interface QuestionBankItem {
+  // `questionId` is the canonical key. `id` remains as a compatibility alias
+  // for persisted sessions created before the question bank migration.
   id: string;
+  questionId: string;
   subject: string;
   topic: string;
   statement: string;
@@ -38,6 +43,7 @@ export interface QuestionResult {
   correct: boolean;
   answeredAt: string;
   difficulty?: number | null;
+  questionDifficulty?: QuestionDifficulty | null;
   selectedOptionId?: string | null;
   correctOptionId?: string | null;
   topic?: string | null;

@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 
 import {
+  PracticeAnswerValue,
   PracticeBuildMode,
   PracticeRecommendation,
   PracticeSession,
@@ -31,6 +32,7 @@ import {
   getTodayScheduleDays,
   isPracticeSession,
   migrateLegacyPracticeSession,
+  normalizePersistedPracticeSession,
   registerQuestionResult,
 } from '../utils/practice/practiceEngine';
 
@@ -49,7 +51,7 @@ type PracticeContextData = {
   startPracticeSession: (options?: StartPracticeSessionOptions) => PracticeSession | null;
   answerPracticeQuestion: (
     questionId: string,
-    correct: boolean,
+    answer: PracticeAnswerValue,
     difficulty?: number | null
   ) => void;
   finishPracticeSession: () => PracticeSession | null;
@@ -116,7 +118,7 @@ function normalizePracticeSessions(value: unknown): PracticeSession[] {
 
   return value
     .map((entry) => {
-      if (isPracticeSession(entry)) return entry;
+      if (isPracticeSession(entry)) return normalizePersistedPracticeSession(entry);
       return migrateLegacyPracticeSession(entry, 'completed');
     })
     .filter((entry): entry is PracticeSession => Boolean(entry))
@@ -128,7 +130,7 @@ function normalizePracticeSessions(value: unknown): PracticeSession[] {
 }
 
 function normalizeCurrentSession(value: unknown): PracticeSession | null {
-  if (isPracticeSession(value)) return value;
+  if (isPracticeSession(value)) return normalizePersistedPracticeSession(value);
   return migrateLegacyPracticeSession(value, 'in_progress');
 }
 
@@ -303,10 +305,10 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   );
 
   const answerPracticeQuestion = useCallback(
-    (questionId: string, correct: boolean, difficulty?: number | null) => {
+    (questionId: string, answer: PracticeAnswerValue, difficulty?: number | null) => {
       setCurrentPracticeSession((prev) => {
         if (!prev) return prev;
-        return registerQuestionResult(prev, questionId, correct, difficulty);
+        return registerQuestionResult(prev, questionId, answer, difficulty);
       });
     },
     []

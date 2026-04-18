@@ -10,8 +10,38 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { buildPracticeQuestionIds } from '../../utils/practice/practiceEngine';
+import { QuestionBankItem } from '../../apps/shared/types/practice';
 import { useAppContext } from '../../context/AppContext';
+import { buildPracticeQuestionIds } from '../../utils/practice/practiceEngine';
+
+type FallbackPracticeQuestion = QuestionBankItem;
+
+function getQuestionKey(question: Pick<QuestionBankItem, 'id' | 'questionId'>): string {
+  return question.questionId || question.id;
+}
+
+function getOptionLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+function buildFallbackQuestion(
+  sessionSubject: string,
+  questionId: string,
+  index: number
+): FallbackPracticeQuestion {
+  return {
+    id: questionId,
+    questionId,
+    subject: sessionSubject,
+    topic: sessionSubject,
+    statement: `Questao ${index + 1}. Resolva no seu material e marque o resultado aqui.`,
+    options: [],
+    correctOptionId: '',
+    explanation: '',
+    difficulty: 'medium',
+    tags: [],
+  };
+}
 
 export default function PracticeSessionScreen() {
   const {
@@ -33,17 +63,9 @@ export default function PracticeSessionScreen() {
       return session.questions;
     }
 
-    return questionIds.map((questionId, index) => ({
-      id: questionId,
-      subject: session.subject,
-      topic: session.subject,
-      statement: `Questao ${index + 1}. Resolva no seu material e marque o resultado aqui.`,
-      options: [],
-      correctOptionId: '',
-      explanation: '',
-      difficulty: 'medium' as const,
-      tags: [],
-    }));
+    return questionIds.map((questionId, index) =>
+      buildFallbackQuestion(session.subject, questionId, index)
+    );
   }, [questionIds, session]);
   const answersById = useMemo(() => {
     return new Map(
@@ -56,7 +78,7 @@ export default function PracticeSessionScreen() {
   }, [session]);
 
   const canFinish = session
-    ? practiceQuestions.every((question) => answersById.has(question.id))
+    ? practiceQuestions.every((question) => answersById.has(getQuestionKey(question)))
     : false;
 
   function handleFinishSession() {
@@ -142,11 +164,20 @@ export default function PracticeSessionScreen() {
 
         <View style={styles.list}>
           {practiceQuestions.map((question, index) => {
-            const answer = answersById.get(question.id);
+            const questionKey = getQuestionKey(question);
+            const answer = answersById.get(questionKey) ?? null;
             const hasStructuredQuestion = question.options.length > 0;
+            const isAnswered = Boolean(answer);
+            const selectedOptionId = answer?.selectedOptionId ?? null;
+            const selectedOption =
+              question.options.find((option) => option.id === selectedOptionId) ?? null;
+            const correctOption =
+              question.options.find(
+                (option) => option.id === question.correctOptionId
+              ) ?? null;
 
             return (
-              <View key={question.id} style={styles.questionCard}>
+              <View key={questionKey} style={styles.questionCard}>
                 <View style={styles.questionHeader}>
                   <Text style={styles.questionIndex}>Questao {index + 1}</Text>
                   <Text style={styles.questionSubject}>{question.topic}</Text>
@@ -156,51 +187,131 @@ export default function PracticeSessionScreen() {
 
                 {hasStructuredQuestion ? (
                   <View style={styles.optionList}>
-                    {question.options.map((option, optionIndex) => (
-                      <View key={option.id} style={styles.optionRow}>
-                        <Text style={styles.optionLabel}>
-                          {String.fromCharCode(65 + optionIndex)}.
+                    {question.options.map((option, optionIndex) => {
+                      const isSelected = selectedOptionId === option.id;
+                      const isCorrectOption = option.id === question.correctOptionId;
+
+                      return (
+                        <Pressable
+                          key={option.id}
+                          disabled={isAnswered}
+                          onPress={() => answerPracticeQuestion(questionKey, option.id)}
+                          style={[
+                            styles.optionButton,
+                            !isAnswered && styles.optionButtonInteractive,
+                            isAnswered && isCorrectOption && styles.optionButtonCorrect,
+                            isAnswered &&
+                              isSelected &&
+                              !answer?.correct &&
+                              styles.optionButtonIncorrect,
+                            isAnswered &&
+                              !isSelected &&
+                              !isCorrectOption &&
+                              styles.optionButtonMuted,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.optionLetter,
+                              isAnswered &&
+                                isCorrectOption &&
+                                styles.optionLetterCorrect,
+                              isAnswered &&
+                                isSelected &&
+                                !answer?.correct &&
+                                styles.optionLetterIncorrect,
+                            ]}
+                          >
+                            {getOptionLetter(optionIndex)}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.optionText,
+                              isAnswered &&
+                                isCorrectOption &&
+                                styles.optionTextStrong,
+                              isAnswered &&
+                                isSelected &&
+                                !answer?.correct &&
+                                styles.optionTextStrong,
+                              isAnswered &&
+                                !isSelected &&
+                                !isCorrectOption &&
+                                styles.optionTextMuted,
+                            ]}
+                          >
+                            {option.text}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.questionHelp}>
+                    Resolva a questao no seu material e marque o resultado aqui.
+                  </Text>
+                )}
+
+                {hasStructuredQuestion ? (
+                  isAnswered ? (
+                    <View
+                      style={[
+                        styles.feedbackBox,
+                        answer?.correct
+                          ? styles.feedbackBoxCorrect
+                          : styles.feedbackBoxIncorrect,
+                      ]}
+                    >
+                      <Text style={styles.feedbackTitle}>
+                        {answer?.correct ? 'Resposta correta' : 'Resposta incorreta'}
+                      </Text>
+
+                      {selectedOption ? (
+                        <Text style={styles.feedbackLine}>
+                          Sua resposta: {selectedOption.text}
                         </Text>
-                        <Text style={styles.optionText}>{option.text}</Text>
-                      </View>
-                    ))}
+                      ) : null}
+
+                      {correctOption ? (
+                        <Text style={styles.feedbackLine}>
+                          Gabarito: {correctOption.text}
+                        </Text>
+                      ) : null}
+
+                      {question.explanation ? (
+                        <Text style={styles.feedbackExplanation}>
+                          {question.explanation}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <Text style={styles.questionHelp}>
+                      Escolha uma alternativa para registrar seu desempenho real.
+                    </Text>
+                  )
+                ) : (
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      style={[
+                        styles.answerButton,
+                        answer?.correct === false && styles.answerButtonIncorrect,
+                      ]}
+                      onPress={() => answerPracticeQuestion(questionKey, false)}
+                    >
+                      <Text style={styles.answerButtonText}>Errei</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[
+                        styles.answerButton,
+                        answer?.correct === true && styles.answerButtonCorrect,
+                      ]}
+                      onPress={() => answerPracticeQuestion(questionKey, true)}
+                    >
+                      <Text style={styles.answerButtonText}>Acertei</Text>
+                    </Pressable>
                   </View>
-                ) : null}
-
-                <Text style={styles.questionHelp}>
-                  {hasStructuredQuestion
-                    ? 'Resolva agora e marque se acertou ou errou.'
-                    : 'Resolva a questao no seu material e marque o resultado aqui.'}
-                </Text>
-
-                <View style={styles.actionRow}>
-                  <Pressable
-                    style={[
-                      styles.answerButton,
-                      answer?.correct === false && styles.answerButtonIncorrect,
-                    ]}
-                    onPress={() => answerPracticeQuestion(question.id, false)}
-                  >
-                    <Text style={styles.answerButtonText}>Errei</Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.answerButton,
-                      answer?.correct === true && styles.answerButtonCorrect,
-                    ]}
-                    onPress={() => answerPracticeQuestion(question.id, true)}
-                  >
-                    <Text style={styles.answerButtonText}>Acertei</Text>
-                  </Pressable>
-                </View>
-
-                {answer && question.explanation ? (
-                  <View style={styles.explanationBox}>
-                    <Text style={styles.explanationTitle}>Explicacao rapida</Text>
-                    <Text style={styles.explanationText}>{question.explanation}</Text>
-                  </View>
-                ) : null}
+                )}
               </View>
             );
           })}
@@ -298,7 +409,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E293B',
     borderRadius: 20,
     padding: 16,
-    gap: 10,
+    gap: 12,
   },
   questionHeader: {
     flexDirection: 'row',
@@ -315,38 +426,96 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  questionHelp: {
-    color: '#94A3B8',
-    fontSize: 14,
-    lineHeight: 20,
-  },
   questionStatement: {
     color: '#E2E8F0',
     fontSize: 15,
     lineHeight: 22,
   },
+  questionHelp: {
+    color: '#94A3B8',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   optionList: {
     gap: 8,
   },
-  optionRow: {
+  optionButton: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
     alignItems: 'flex-start',
     backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
     borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
-  optionLabel: {
+  optionButtonInteractive: {
+    borderColor: '#475569',
+  },
+  optionButtonCorrect: {
+    backgroundColor: 'rgba(34,197,94,0.14)',
+    borderColor: 'rgba(34,197,94,0.35)',
+  },
+  optionButtonIncorrect: {
+    backgroundColor: 'rgba(239,68,68,0.14)',
+    borderColor: 'rgba(239,68,68,0.35)',
+  },
+  optionButtonMuted: {
+    opacity: 0.64,
+  },
+  optionLetter: {
     color: '#A5B4FC',
     fontSize: 13,
     fontWeight: '800',
+    minWidth: 18,
+  },
+  optionLetterCorrect: {
+    color: '#86EFAC',
+  },
+  optionLetterIncorrect: {
+    color: '#FCA5A5',
   },
   optionText: {
     flex: 1,
     color: '#CBD5E1',
     fontSize: 13,
     lineHeight: 19,
+  },
+  optionTextStrong: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  optionTextMuted: {
+    color: '#94A3B8',
+  },
+  feedbackBox: {
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+  },
+  feedbackBoxCorrect: {
+    backgroundColor: 'rgba(34,197,94,0.14)',
+  },
+  feedbackBoxIncorrect: {
+    backgroundColor: 'rgba(239,68,68,0.14)',
+  },
+  feedbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  feedbackLine: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  feedbackExplanation: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    lineHeight: 20,
   },
   actionRow: {
     flexDirection: 'row',
@@ -373,24 +542,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
-  },
-  explanationBox: {
-    backgroundColor: 'rgba(99,102,241,0.14)',
-    borderRadius: 14,
-    padding: 12,
-    gap: 4,
-  },
-  explanationTitle: {
-    color: '#C7D2FE',
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  explanationText: {
-    color: '#E2E8F0',
-    fontSize: 13,
-    lineHeight: 19,
   },
   footer: {
     position: 'absolute',
@@ -435,7 +586,7 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
   },
   emptyText: {

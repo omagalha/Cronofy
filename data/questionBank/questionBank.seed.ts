@@ -28,6 +28,7 @@ function createQuestion(id: string, input: QuestionSeedInput): QuestionBankItem 
 
   return {
     id,
+    questionId: id,
     subject: input.subject,
     topic: input.topic,
     statement: input.statement,

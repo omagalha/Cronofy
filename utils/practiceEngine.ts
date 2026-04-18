@@ -1,6 +1,7 @@
 import { AIAnalysis } from '../context/AIContext';
 import { IReviewItem } from '../apps/shared/types/review';
 import {
+  PracticeAnswerValue,
   PracticeBuildMode,
   PracticeRecommendation,
   PracticeSession,
@@ -94,6 +95,25 @@ export function normalizePracticeSubject(subject?: string | null): string {
 
 function getCurrentTimestamp() {
   return new Date().toISOString();
+}
+
+function getQuestionBankItemId(question: Pick<QuestionBankItem, 'id' | 'questionId'>): string {
+  return question.questionId || question.id;
+}
+
+function mapQuestionDifficultyToScore(
+  difficulty?: QuestionBankItem['difficulty']
+): number | null {
+  switch (difficulty) {
+    case 'easy':
+      return 2;
+    case 'medium':
+      return 3;
+    case 'hard':
+      return 4;
+    default:
+      return null;
+  }
 }
 
 function toQuestionCount(value?: number): 5 | 10 {
@@ -434,7 +454,7 @@ export function createPracticeSessionFromSuggestion(
 
 export function buildPracticeQuestionIds(session: PracticeSession): string[] {
   if (Array.isArray(session.questions) && session.questions.length > 0) {
-    return session.questions.map((question) => question.id);
+    return session.questions.map((question) => getQuestionBankItemId(question));
   }
 
   return Array.from({ length: session.totalQuestions }, (_, index) => {
@@ -445,10 +465,18 @@ export function buildPracticeQuestionIds(session: PracticeSession): string[] {
 export function registerQuestionResult(
   session: PracticeSession,
   questionId: string,
-  correct: boolean,
+  answer: PracticeAnswerValue,
   difficulty?: number | null
 ): PracticeSession {
-  const sessionQuestion = session.questions?.find((item) => item.id === questionId);
+  const sessionQuestion =
+    session.questions?.find((item) => getQuestionBankItemId(item) === questionId) ?? null;
+  const selectedOptionId = typeof answer === 'string' ? answer : null;
+  const correct =
+    typeof answer === 'boolean'
+      ? answer
+      : sessionQuestion
+      ? sessionQuestion.correctOptionId === selectedOptionId
+      : false;
   const otherResults = session.questionResults.filter(
     (item) => item.questionId !== questionId
   );
@@ -460,8 +488,10 @@ export function registerQuestionResult(
       subject: session.subject,
       correct,
       answeredAt: getCurrentTimestamp(),
-      difficulty: difficulty ?? null,
-      selectedOptionId: null,
+      difficulty:
+        difficulty ?? mapQuestionDifficultyToScore(sessionQuestion?.difficulty) ?? null,
+      questionDifficulty: sessionQuestion?.difficulty ?? null,
+      selectedOptionId,
       correctOptionId: sessionQuestion?.correctOptionId ?? null,
       topic: sessionQuestion?.topic ?? null,
     },
@@ -788,31 +818,63 @@ export function buildPracticeRecommendations(params: {
   });
 }
 
-function isQuestionBankItem(value: unknown): value is QuestionBankItem {
-  if (!value || typeof value !== 'object') return false;
+function normalizeQuestionBankItem(value: unknown): QuestionBankItem | null {
+  if (!value || typeof value !== 'object') return null;
 
-  const candidate = value as QuestionBankItem;
+  const candidate = value as Partial<QuestionBankItem> & {
+    questionId?: unknown;
+    id?: unknown;
+  };
+  const questionId =
+    typeof candidate.questionId === 'string'
+      ? candidate.questionId
+      : typeof candidate.id === 'string'
+      ? candidate.id
+      : null;
 
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.subject === 'string' &&
-    typeof candidate.topic === 'string' &&
-    typeof candidate.statement === 'string' &&
-    Array.isArray(candidate.options) &&
-    candidate.options.every(
+  if (
+    !questionId ||
+    typeof candidate.subject !== 'string' ||
+    typeof candidate.topic !== 'string' ||
+    typeof candidate.statement !== 'string' ||
+    !Array.isArray(candidate.options) ||
+    !candidate.options.every(
       (option) =>
         Boolean(option) &&
         typeof option.id === 'string' &&
         typeof option.text === 'string'
-    ) &&
-    typeof candidate.correctOptionId === 'string' &&
-    typeof candidate.explanation === 'string' &&
-    (candidate.difficulty === 'easy' ||
-      candidate.difficulty === 'medium' ||
-      candidate.difficulty === 'hard') &&
-    Array.isArray(candidate.tags) &&
-    candidate.tags.every((tag) => typeof tag === 'string')
-  );
+    ) ||
+    typeof candidate.correctOptionId !== 'string' ||
+    typeof candidate.explanation !== 'string' ||
+    (candidate.difficulty !== 'easy' &&
+      candidate.difficulty !== 'medium' &&
+      candidate.difficulty !== 'hard') ||
+    !Array.isArray(candidate.tags) ||
+    !candidate.tags.every((tag) => typeof tag === 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    id: questionId,
+    questionId,
+    subject: candidate.subject,
+    topic: candidate.topic,
+    statement: candidate.statement,
+    options: candidate.options,
+    correctOptionId: candidate.correctOptionId,
+    explanation: candidate.explanation,
+    difficulty: candidate.difficulty,
+    tags: candidate.tags,
+    estimatedTimeSeconds:
+      typeof candidate.estimatedTimeSeconds === 'number'
+        ? candidate.estimatedTimeSeconds
+        : undefined,
+  };
+}
+
+function isQuestionBankItem(value: unknown): value is QuestionBankItem {
+  return Boolean(normalizeQuestionBankItem(value));
 }
 
 function isQuestionResult(value: unknown): value is QuestionResult {
@@ -828,6 +890,11 @@ function isQuestionResult(value: unknown): value is QuestionResult {
     (typeof candidate.difficulty === 'number' ||
       candidate.difficulty === null ||
       typeof candidate.difficulty === 'undefined') &&
+    (candidate.questionDifficulty === 'easy' ||
+      candidate.questionDifficulty === 'medium' ||
+      candidate.questionDifficulty === 'hard' ||
+      candidate.questionDifficulty === null ||
+      typeof candidate.questionDifficulty === 'undefined') &&
     (typeof candidate.selectedOptionId === 'string' ||
       candidate.selectedOptionId === null ||
       typeof candidate.selectedOptionId === 'undefined') &&
@@ -838,6 +905,37 @@ function isQuestionResult(value: unknown): value is QuestionResult {
       candidate.topic === null ||
       typeof candidate.topic === 'undefined')
   );
+}
+
+export function normalizePersistedPracticeSession(
+  session: PracticeSession
+): PracticeSession {
+  const questions = Array.isArray(session.questions)
+    ? session.questions
+        .map((question) => normalizeQuestionBankItem(question))
+        .filter((question): question is QuestionBankItem => Boolean(question))
+    : [];
+
+  const questionResults = session.questionResults.map((result) => ({
+    ...result,
+    difficulty: typeof result.difficulty === 'number' ? result.difficulty : null,
+    questionDifficulty:
+      result.questionDifficulty === 'easy' ||
+      result.questionDifficulty === 'medium' ||
+      result.questionDifficulty === 'hard'
+        ? result.questionDifficulty
+        : null,
+    selectedOptionId: result.selectedOptionId ?? null,
+    correctOptionId: result.correctOptionId ?? null,
+    topic: result.topic ?? null,
+  }));
+
+  return {
+    ...session,
+    totalQuestions: questions.length > 0 ? questions.length : session.totalQuestions,
+    questionResults,
+    questions,
+  };
 }
 
 export function isPracticeSession(value: unknown): value is PracticeSession {

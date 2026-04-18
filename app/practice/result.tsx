@@ -7,7 +7,7 @@ import PracticeResultCard from '../../components/practice/PracticeResultCard';
 import SubjectPerformanceCard from '../../components/practice/SubjectPerformanceCard';
 import { SubjectPerformance } from '../../apps/shared/types/practice';
 import { useAppContext } from '../../context/AppContext';
-import { buildSubjectPerformance } from '../../utils/practiceEngine';
+import { buildSubjectPerformance } from '../../utils/practice/practiceEngine';
 
 function sortSubjectPerformance(items: SubjectPerformance[]) {
   return [...items].sort((a, b) => {
